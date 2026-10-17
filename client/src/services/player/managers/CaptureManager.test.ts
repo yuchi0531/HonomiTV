@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type DPlayer from 'dplayer';
 
@@ -193,7 +193,8 @@ describe('キャプチャのアスペクト比補正', () => {
                 .captureAndSave(true),
         ).resolves.toBeUndefined();
         expect(notice).toHaveBeenCalled();
-        expect(notice.mock.calls[0][0]).toContain('コメント表示をオンにしてください');
+        // コメント付きキャプチャが使えないことを案内する
+        expect(notice.mock.calls[0][0]).toContain('コメント付きキャプチャを利用できません');
     });
 });
 
