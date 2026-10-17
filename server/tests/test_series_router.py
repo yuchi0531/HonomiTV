@@ -113,6 +113,8 @@ class SeriesRouterAsyncTest(unittest.IsolatedAsyncioTestCase):
             'bangumi_subject_name_cn': None,
             'bangumi_subject_summary': None,
             'bangumi_subject_image_url': None,
+            'annict_work_id': None,
+            'annict_work_name': None,
             'thumbnail_recorded_program_ids': '[102, 101]',
             'channel_ids': '[]',
             'official_website_sources': '[]',

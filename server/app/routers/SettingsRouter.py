@@ -10,6 +10,7 @@ from app import logging, schemas
 from app.config import ClientSettings, Config, SaveConfig, ServerSettings
 from app.models.User import User
 from app.routers.UsersRouter import GetCurrentAdminUser, GetCurrentUser
+from app.utils.AnnictPlaybackSync import SyncAnnictHistoryPlaybackProgress
 from app.utils.BangumiPlaybackSync import SyncHistoryPlaybackProgress
 from app.WatchedHistory import MergeWatchedHistory, ResolveLiveWatchedHistory
 
@@ -109,7 +110,9 @@ async def ClientSettingsUpdateAPI(
         # レコードを保存する
         # 設定取得後に更新された Bangumi 認証情報などを古い値へ戻さない。
         await current_user.save(update_fields=['client_settings', 'updated_at'])
+    # Bangumi と Annict は独立して連携・同期できるため、両方へ現在位置を報告する
     await SyncHistoryPlaybackProgress(current_user, client_settings.playback_progress)
+    await SyncAnnictHistoryPlaybackProgress(current_user, client_settings.playback_progress)
 
 
 @router.get(
@@ -176,6 +179,7 @@ async def WatchedHistoryUpdateAPI(
         # 履歴保存は設定だけを更新し、並行するトークン更新を保持する。
         await current_user.save(update_fields=['client_settings', 'updated_at'])
     await SyncHistoryPlaybackProgress(current_user, watched_history.playback_progress)
+    await SyncAnnictHistoryPlaybackProgress(current_user, watched_history.playback_progress)
     # マージ結果も保存時と同じ JSON 表現なので、レスポンスでは型付きの公開スキーマへ戻す
     return schemas.WatchedHistory(
         items=[schemas.WatchedHistoryItem.model_validate(item) for item in merged_history],

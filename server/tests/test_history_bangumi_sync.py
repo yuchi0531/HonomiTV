@@ -19,6 +19,10 @@ class HistoryBangumiSyncTest(unittest.IsolatedAsyncioTestCase):
         user.id = 1
         user.bangumi_user_id = 123
         user.bangumi_access_token = 'encrypted-token'
+        # Bangumi のみ連携している実ユーザーと同じ状態にする (MagicMock は属性を自動生成するため明示する)
+        user.annict_user_id = None
+        user.annict_access_token = None
+        user.annict_auto_record_playback = False
         user.client_settings = ClientSettings().model_dump()
         user.refresh_from_db = AsyncMock()
         user.save = AsyncMock()

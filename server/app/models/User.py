@@ -54,6 +54,18 @@ class User(TortoiseModel):
     bangumi_user_avatar_url = cast(TortoiseField[str | None], fields.TextField(null=True))
     # 個人アクセストークンは将来の視聴状態同期 API から参照する認証情報で、暗号化した値だけを保持する
     bangumi_access_token = cast(TortoiseField[str | None], fields.TextField(null=True))
+    # Annict アカウント連携で表示する公開プロフィール情報
+    ## Bangumi と同時に連携できるよう、別のカラム群として保持する
+    annict_user_id = cast(TortoiseField[int | None], fields.IntField(null=True))
+    annict_user_name = cast(TortoiseField[str | None], fields.TextField(null=True))
+    annict_user_nickname = cast(TortoiseField[str | None], fields.TextField(null=True))
+    annict_user_avatar_url = cast(TortoiseField[str | None], fields.TextField(null=True))
+    # Annict の個人用アクセストークン (暗号化して保存する)
+    annict_access_token = cast(TortoiseField[str | None], fields.TextField(null=True))
+    # Annict へ視聴記録を自動投稿するかどうか
+    ## record は公開の視聴ログになるため既定は無効。投稿するのはサーバーなので、
+    ## クライアント設定の同期が無効な環境でも確実に反映されるようユーザーのカラムとして持つ
+    annict_auto_record_playback = fields.BooleanField(default=False)
     twitter_accounts: fields.ReverseRelation[TwitterAccount]
     bluesky_accounts: fields.ReverseRelation[BlueskyAccount]
     account_links: fields.ReverseRelation[AccountLink]
@@ -105,6 +117,53 @@ class User(TortoiseModel):
             raise HTTPException(
                 status_code = status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail = 'Failed to decrypt Bangumi access token. Please re-link your Bangumi account.',
+            ) from ex
+
+
+    def encryptAnnictAccessToken(self, plain_text: str) -> str:
+        """
+        Annict 個人用アクセストークンを暗号化する。
+
+        Args:
+            plain_text (str): 暗号化前の個人用アクセストークン。
+
+        Returns:
+            str: 暗号化済みの個人用アクセストークン。
+        """
+
+        # Bangumi と同じ方式で暗号化し、接頭辞で暗号化済みであることを明示する
+        encrypted_text = BANGUMI_ACCESS_TOKEN_FERNET.encrypt(plain_text.encode('utf-8')).decode('utf-8')
+        return f'{BANGUMI_ACCESS_TOKEN_ENCRYPTION_PREFIX}{encrypted_text}'
+
+
+    def decryptAnnictAccessToken(self) -> str:
+        """
+        データベースに保存されている Annict 個人用アクセストークンを復号する。
+
+        Returns:
+            str: 復号済みの Annict 個人用アクセストークン。
+
+        Raises:
+            HTTPException: トークンが未保存、平文、または復号不能な場合。
+        """
+
+        # Annict 連携も常に暗号化後のトークンを保存するため、平文は受け入れない
+        encrypted_text = self.annict_access_token or ''
+        if encrypted_text.startswith(BANGUMI_ACCESS_TOKEN_ENCRYPTION_PREFIX) is False:
+            raise HTTPException(
+                status_code = status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail = 'Annict access token is unavailable. Please re-link your Annict account.',
+            )
+
+        # 接頭辞を除いた Fernet トークンだけを復号する
+        token = encrypted_text[len(BANGUMI_ACCESS_TOKEN_ENCRYPTION_PREFIX):].encode('utf-8')
+        try:
+            return BANGUMI_ACCESS_TOKEN_FERNET.decrypt(token).decode('utf-8')
+        except InvalidToken as ex:
+            logging.error('[User][decryptAnnictAccessToken] Failed to decrypt access token:', exc_info=ex)
+            raise HTTPException(
+                status_code = status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail = 'Failed to decrypt Annict access token. Please re-link your Annict account.',
             ) from ex
 
 

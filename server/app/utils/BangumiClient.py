@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import re
-import unicodedata
 from collections import OrderedDict
 from copy import deepcopy
-from difflib import SequenceMatcher
 from hashlib import sha256
 from time import monotonic
 from typing import Any, cast
@@ -16,11 +14,11 @@ from tortoise.exceptions import IntegrityError
 
 from app import logging, schemas
 from app.constants import API_REQUEST_HEADERS, HTTPX_CLIENT
-from app.metadata.SeriesIndexer import IsStrictSeriesTitlePrefix, NormalizeSeriesTitle
 from app.metadata.SeriesMerger import SeriesMerger
 from app.models.RecordedProgram import RecordedProgram
 from app.models.Series import Series
 from app.models.User import User
+from app.utils.SeriesMatcher import SeriesMatcher
 
 
 class BangumiClient:
@@ -38,14 +36,9 @@ class BangumiClient:
         'バラエティ': {6},
         '音楽': {6},
     }
-    # 放送版の品質差だけを比較キーから取り除き、作品の期・劇場版などの識別情報は保持する。
-    REMASTER_SUFFIX_PATTERN = re.compile(r'\s*(?:(?:[248]K|HD|デジタル)\s*)?リマスター版?\s*$', re.IGNORECASE)
-    SEQUEL_PREFIX_PATTERN = re.compile(
-        r'^(?:第\s*[0-9一二三四五六七八九十]+\s*(?:期|部|章|シーズン|クール)|'
-        r'[0-9]+|(?:season|part)\s*[0-9]+|'
-        r'[ivx]+\b|続編|続・|劇場版|映画|the\s*movie\b|final\s*season\b|ova\b|oad\b)',
-        re.IGNORECASE,
-    )
+    # タイトル照合のパターンは SeriesMatcher と共有する
+    REMASTER_SUFFIX_PATTERN = SeriesMatcher.REMASTER_SUFFIX_PATTERN
+    SEQUEL_PREFIX_PATTERN = SeriesMatcher.SEQUEL_PREFIX_PATTERN
     _sync_tasks: set[asyncio.Task[None]] = set()
     _subject_merge_locks: dict[int, asyncio.Lock] = {}
     # 認証ごとに読み取り結果を隔離し、公開範囲の違うアカウントへ応答を流用しない。
@@ -114,10 +107,7 @@ class BangumiClient:
             int | None: 単一の正整数であればその値、それ以外は None。
         """
 
-        if episode_number is None or episode_number.isdecimal() is False:
-            return None
-        parsed_number = int(episode_number)
-        return parsed_number if parsed_number > 0 else None
+        return SeriesMatcher.parseEpisodeNumber(episode_number)
 
 
     @staticmethod
@@ -129,13 +119,10 @@ class BangumiClient:
             title (str): ローカル Series または Bangumi 作品のタイトル。
 
         Returns:
-            str: Unicode・空白・末尾句読点・リマスター表記の差を吸収した比較キー。
+            str: 表記揺れを吸収した比較キー。
         """
 
-        # EPG と Bangumi では長い作品名の末尾句点だけが欠けることがあるため、その差だけを追加で吸収する。
-        normalized_title = unicodedata.normalize('NFKC', title)
-        normalized_title = BangumiClient.REMASTER_SUFFIX_PATTERN.sub('', normalized_title)
-        return NormalizeSeriesTitle(normalized_title).rstrip('。.!！?？')
+        return SeriesMatcher.normalizeTitle(title)
 
 
     @classmethod
@@ -151,28 +138,13 @@ class BangumiClient:
             bool: 続編ではない明示的な副題境界が確認できた場合に True。
         """
 
-        short_key = cls._normalizeSubjectTitle(short_title)
-        long_key = cls._normalizeSubjectTitle(long_title)
-        if not short_key:
-            return False
-        if IsStrictSeriesTitlePrefix(short_key, long_key):
-            return True
-
-        # 空白を消す前に日本語主題の終わりを確認し、英語作品名の単語間空白を副題と誤認しない。
-        ## 短すぎる汎用名と、数字・期・劇場版を後置した別作品は弱い候補にも含めない。
-        title_parts = unicodedata.normalize('NFKC', long_title).strip().split(maxsplit=1)
-        return (
-            len(title_parts) == 2 and len(short_key) >= 4 and
-            re.search(r'[ぁ-んァ-ヶ一-龯]', short_key) is not None and
-            cls._normalizeSubjectTitle(title_parts[0]) == short_key and
-            cls.SEQUEL_PREFIX_PATTERN.match(title_parts[1]) is None
-        )
+        return SeriesMatcher.isTitlePrefix(short_title, long_title)
 
 
     @classmethod
     def _scoreSubjectTitle(cls, series_title: str, subject: dict[str, Any]) -> int:
         """
-        ユーザーのコレクションに登録されたアニメ・実写からローカル Series の作品候補を採点する。
+        Bangumi コレクションに登録された作品からローカル Series の候補を採点する。
 
         Args:
             series_title (str): ローカル Series の表示タイトル。
@@ -182,41 +154,10 @@ class BangumiClient:
             int: タイトル一致度。候補外の場合は 0。
         """
 
-        local_title = cls._normalizeSubjectTitle(series_title)
-        original_subject_titles = [
-            str(subject.get('name', '')),
-            str(subject.get('name_cn', '')),
-        ]
-        subject_titles = {cls._normalizeSubjectTitle(title) for title in original_subject_titles} - {''}
-        if not local_title or len(subject_titles) == 0:
-            return 0
-        if local_title in subject_titles:
-            return 100
-
-        # 長い主題は期や劇場版の追加後も類似率が高いため、明示的な別作品表記を fuzzy 判定より先に拒否する。
-        for subject_title in subject_titles:
-            short_key, long_key = sorted((local_title, subject_title), key=len)
-            if long_key.startswith(short_key):
-                edition_suffix = long_key[len(short_key):].lstrip('~～-―—:：「『【')
-                if cls.SEQUEL_PREFIX_PATTERN.match(edition_suffix) is not None:
-                    return 0
-
-        # 放送局が副題を省略した表記は、安全な副題境界を持つ場合だけ弱い候補として認める。
-        if any(
-            cls._isSubjectTitlePrefix(series_title, subject_title) or
-            cls._isSubjectTitlePrefix(subject_title, series_title)
-            for subject_title in original_subject_titles
-        ):
-            return 80
-
-        # コレクション一覧に絞った後も僅かな記号・転写差が残るため、長いタイトル同士だけ保守的に類似判定する。
-        similarity = max(
-            (SequenceMatcher(None, local_title, subject_title).ratio() for subject_title in subject_titles),
-            default = 0.0,
+        return SeriesMatcher.scoreTitle(
+            series_title,
+            [str(subject.get('name', '')), str(subject.get('name_cn', ''))],
         )
-        if min([len(local_title), *(len(subject_title) for subject_title in subject_titles)]) >= 8 and similarity >= 0.9:
-            return int(similarity * 75)
-        return 0
 
 
     @staticmethod
@@ -237,7 +178,7 @@ class BangumiClient:
             bool: CM 区間を考慮した視聴完了位置まで再生済みなら True。
         """
 
-        return playback_position >= schemas.GetPlaybackCompletionThreshold(duration, cm_sections)
+        return SeriesMatcher.isPlaybackCompleted(playback_position, duration, cm_sections)
 
 
     @classmethod
@@ -256,40 +197,7 @@ class BangumiClient:
             tuple[int | None, bool, bool]: 対象話数、範囲録画かどうか、完了位置到達かどうか。
         """
 
-        episode_number = cls.parseEpisodeNumber(recorded_program.episode_number)
-        channel = recorded_program.channel
-        is_atx_anime = (
-            channel is not None and channel.type == 'CS' and channel.service_id == 333
-            and any('アニメ' in genre['major'] and '特撮' not in genre['middle'] for genre in recorded_program.genres)
-            and recorded_program.is_partially_recorded is False
-        )
-        # 単話は従来の CM/90% 判定を基本とし、CS333 の通常アニメ枠だけ 20 分へ置き換える。
-        if episode_number is not None:
-            if is_atx_anime and 27 * 60 <= recorded_program.duration <= 36 * 60:
-                return episode_number, False, playback_position >= 20 * 60
-            completion_duration = recorded_program.recorded_video.duration \
-                if recorded_program.recorded_video.cm_sections else duration
-            return episode_number, False, cls.isPlaybackCompleted(
-                playback_position, completion_duration, recorded_program.recorded_video.cm_sections,
-            )
-
-        # UI が認識済みの連続範囲だけを使う。タイトルから新たな範囲や話数を推測しない。
-        match = re.fullmatch(r'([0-9]+)-([0-9]+)', recorded_program.episode_number or '')
-        if not is_atx_anime or match is None:
-            return None, False, False
-        first_episode, last_episode = (int(value) for value in match.groups())
-        episode_count = last_episode - first_episode + 1
-        if first_episode <= 0 or episode_count <= 1:
-            return None, True, False
-        # 半時間枠の連続放送だけを対象とし、映画・短編・欠損録画へ機械的な 30 分分割を適用しない。
-        slot_duration = recorded_program.duration / episode_count
-        if not 27 * 60 <= slot_duration <= 36 * 60:
-            return None, True, False
-        slot_index = int(playback_position // (30 * 60))
-        # 最終話後の録画マージンでは最終話を維持するが、余分な話数は生成しない。
-        slot_index = min(slot_index, episode_count - 1)
-        threshold = slot_index * 30 * 60 + 20 * 60
-        return first_episode + slot_index, True, playback_position >= threshold
+        return SeriesMatcher.selectPlaybackEpisode(recorded_program, playback_position, duration)
 
 
     @classmethod

@@ -15,6 +15,11 @@ export interface IUser {
     bangumi_user_name: string | null;
     bangumi_user_nickname: string | null;
     bangumi_user_avatar_url: string | null;
+    annict_user_id: number | null;
+    annict_user_name: string | null;
+    annict_user_nickname: string | null;
+    annict_user_avatar_url: string | null;
+    annict_auto_record_playback: boolean;
     twitter_accounts: ITwitterAccount[];
     bluesky_accounts: IBlueskyAccount[];
     account_links: IAccountLink[];
