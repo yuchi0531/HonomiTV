@@ -91,4 +91,37 @@ describe('ChannelsStore network source recovery', () => {
             await update;
         }
     });
+
+    it('hides the network tab entirely when IPTV is not configured', async () => {
+        // 未設定時のサーバーは空の IPTV とエラーなしを返す。設定していない機能のタブは出さない。
+        vi.spyOn(Channels, 'fetchAllChannels').mockResolvedValue(createResponse([], null));
+        const store = useChannelsStore();
+
+        await store.update(true);
+
+        expect(Array.from(store.channels_list_with_pinned.keys())).not.toContain('ネット');
+        expect(store.source_errors.IPTV).toBeNull();
+    });
+
+    it('keeps the network tab when the configured source is temporarily failing', async () => {
+        // 設定されているが一時的に取得できなかった場合は、復旧後にカードを戻せるようタブを残す。
+        vi.spyOn(Channels, 'fetchAllChannels').mockImplementation(async source =>
+            source === 'Jellyfin' ? createResponse([], '接続に失敗しました。') : createResponse([], null));
+        const store = useChannelsStore();
+
+        await store.update(true);
+
+        expect(Array.from(store.channels_list_with_pinned.keys())).toContain('ネット');
+        expect(store.channels_list_with_pinned.get('ネット')).toEqual([]);
+    });
+
+    it('does not show an empty network tab before the first update when IPTV is unconfigured', () => {
+        // 初回取得前でも、ネットテレビが設定されていなければタブを作らない。
+        const store = useChannelsStore();
+        store.is_channels_list_initial_updated = false;
+        store.is_iptv_initial_updated = false;
+        store.is_iptv_loading = false;
+
+        expect(Array.from(store.channels_list_with_pinned.keys())).not.toContain('ネット');
+    });
 });

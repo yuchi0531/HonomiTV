@@ -172,3 +172,6 @@ server/core.*
 !.gitkeep
 client/public/assets/images/channel-logo-sprite.webp
 client/src/styles/channel-logo.css
+
+# local working data
+/data/
