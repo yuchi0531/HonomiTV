@@ -396,12 +396,12 @@ class WatchUrlConfig(BaseModel):
 
 
 class ServerSettingsNotificationService(BaseModel):
-    type: Literal['Telegram', 'Slack'] = 'Telegram'
+    type: Literal['Telegram', 'Slack', 'Webhook'] = 'Telegram'
     enabled: bool = False
     # Telegram設定
     bot_token: str | None = None
     chat_id: str | None = None
-    # Slack設定（将来用）
+    # Webhook 設定 (Discord / Slack の Incoming Webhook など)
     webhook_url: str | None = None
     # 視聴URL設定
     watch_urls: list[WatchUrlConfig] = []

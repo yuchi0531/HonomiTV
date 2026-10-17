@@ -140,7 +140,7 @@ export interface IServerSettings {
     };
     notifications: {
         services: Array<{
-            type: 'Telegram' | 'Slack';
+            type: 'Telegram' | 'Slack' | 'Webhook';
             enabled: boolean;
             bot_token?: string;
             chat_id?: string;

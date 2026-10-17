@@ -311,7 +311,7 @@
             </div>
             <div class="settings__item-label">
                 新しい録画ファイルが検出された時に外部サービスへ通知を送信します。<br>
-                複数の通知サービスを同時に有効にできます。<br>
+                複数の通知サービスを同時に有効にできます。Discord を使う場合は [Webhook] を選択してください。<br>
             </div>
             <div v-for="(service, index) in server_settings.notifications.services" :key="'notification-service-' + index">
                 <div class="settings__item mt-4" style="border: 1px solid rgb(var(--v-theme-background-lighten-2)); border-radius: 8px; padding: 24px;">
@@ -340,6 +340,7 @@
                             :density="is_form_dense ? 'compact' : 'default'"
                             :items="[
                                 {title: 'Telegram', value: 'Telegram'},
+                                {title: 'Webhook (Discord など)', value: 'Webhook'},
                                 {title: 'Slack（将来実装予定）', value: 'Slack', disabled: true}
                             ]"
                             v-model="service.type">
@@ -410,6 +411,65 @@
                                     @click="service.watch_urls.push({text: '', base_url: '', type: 'watch_url'})">
                                     <Icon icon="fluent:add-12-filled" height="17px" />
                                     <span class="ml-1">視聴ボタンを追加</span>
+                                </v-btn>
+                            </div>
+                        </div>
+                    </template>
+
+                    <template v-if="service.type === 'Webhook'">
+                        <div class="settings__item">
+                            <div class="settings__item-heading">Webhook URL</div>
+                            <div class="settings__item-label">
+                                通知先の Webhook URL を入力してください。<br>
+                                Discord の場合は、チャンネルの [チャンネルの編集] → [連携サービス] → [ウェブフック] で作成した URL を貼り付けてください。<br>
+                                通知は Discord の Embed 形式で送信されます。視聴リンクを設定すると、通知から直接視聴ページを開けます。<br>
+                            </div>
+                            <v-text-field class="settings__item-form" color="primary" variant="outlined" hide-details
+                                placeholder="例: https://discord.com/api/webhooks/..."
+                                :density="is_form_dense ? 'compact' : 'default'"
+                                v-model="service.webhook_url">
+                            </v-text-field>
+                        </div>
+                        <div class="settings__item">
+                            <div class="settings__item-heading">視聴リンクの設定</div>
+                            <div class="settings__item-label">
+                                通知に表示する視聴リンクを設定できます。<br>
+                                複数のリンクを設定可能です。未設定の場合、視聴リンクは表示されません。<br>
+                            </div>
+                            <div v-if="!service.watch_urls">
+                                <v-btn class="mt-3" color="background-lighten-2" variant="flat" height="40px"
+                                    @click="service.watch_urls = []">
+                                    <Icon icon="fluent:add-12-filled" height="17px" />
+                                    <span class="ml-1">視聴リンクを追加</span>
+                                </v-btn>
+                            </div>
+                            <div v-else>
+                                <div v-for="(watch_url, watch_url_index) in service.watch_urls" :key="'webhook-watch-url-' + watch_url_index">
+                                    <div class="d-flex align-center mt-3" style="gap: 12px;">
+                                        <v-text-field class="flex-grow-1" color="primary" variant="outlined" hide-details
+                                            label="リンクのテキスト"
+                                            placeholder="例: 🏠 ローカルで視聴"
+                                            :density="is_form_dense ? 'compact' : 'default'"
+                                            v-model="watch_url.text">
+                                        </v-text-field>
+                                        <v-text-field class="flex-grow-1" color="primary" variant="outlined" hide-details
+                                            label="ベースURL"
+                                            placeholder="例: https://internal.example.com"
+                                            :density="is_form_dense ? 'compact' : 'default'"
+                                            v-model="watch_url.base_url">
+                                        </v-text-field>
+                                        <button v-ripple class="settings__item-delete-button"
+                                            @click="service.watch_urls.splice(watch_url_index, 1)">
+                                            <svg class="iconify iconify--fluent" width="20px" height="20px" viewBox="0 0 16 16">
+                                                <path fill="currentColor" d="M7 3h2a1 1 0 0 0-2 0ZM6 3a2 2 0 1 1 4 0h4a.5.5 0 0 1 0 1h-.564l-1.205 8.838A2.5 2.5 0 0 1 9.754 15H6.246a2.5 2.5 0 0 1-2.477-2.162L2.564 4H2a.5.5 0 0 1 0-1h4Zm1 3.5a.5.5 0 0 0-1 0v5a.5.5 0 0 0 1 0v-5ZM9.5 6a.5.5 0 0 0-.5.5v5a.5.5 0 0 0 1 0v-5a.5.5 0 0 0-.5-.5Z"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <v-btn class="mt-3" color="background-lighten-2" variant="flat" height="40px"
+                                    @click="service.watch_urls.push({text: '', base_url: '', type: 'watch_url'})">
+                                    <Icon icon="fluent:add-12-filled" height="17px" />
+                                    <span class="ml-1">視聴リンクを追加</span>
                                 </v-btn>
                             </div>
                         </div>
@@ -672,6 +732,23 @@ async function updateServerSettings() {
     }
     if (server_settings.value.server.custom_https_private_key === '') {
         server_settings.value.server.custom_https_private_key = null;
+    }
+
+    // 通知サービスの設定漏れを送信前に検出する
+    // サーバー側は type に応じて必要な項目が揃っているサービスだけを有効扱いにするため、
+    // ここで止めないと「有効にしたのに通知が来ない」状態のまま保存されてしまう
+    for (const [index, service] of server_settings.value.notifications.services.entries()) {
+        if (service.enabled === false) {
+            continue;
+        }
+        if (service.type === 'Webhook' && (service.webhook_url ?? '').trim() === '') {
+            Message.error(`通知サービス #${index + 1}: Webhook URL を入力してください。`);
+            return;
+        }
+        if (service.type === 'Telegram' && ((service.bot_token ?? '').trim() === '' || (service.chat_id ?? '').trim() === '')) {
+            Message.error(`通知サービス #${index + 1}: Bot Token と Chat ID を入力してください。`);
+            return;
+        }
     }
 
     // サーバー設定を更新

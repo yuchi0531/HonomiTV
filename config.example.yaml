@@ -161,6 +161,21 @@ notifications:
         #         }
         #     ]
         # },
+        # Webhook 通知の例（Discord など）
+        # Discord の場合は、チャンネルの [チャンネルの編集] → [連携サービス] → [ウェブフック] で作成した URL を指定します。
+        # 通知は Discord の Embed 形式で送信され、サムネイル画像も添付されます。
+        # {
+        #     'type': 'Webhook',
+        #     'enabled': false,
+        #     'webhook_url': '',  # Discord / Slack などの Webhook URL
+        #     'watch_urls': [     # 視聴リンクの設定（オプション）
+        #         {
+        #             'text': '🏠 ローカルで視聴',
+        #             'base_url': 'https://internal.example.com',
+        #             'type': 'watch_url'
+        #         }
+        #     ]
+        # },
         # Slack 通知の例（将来実装予定）
         # {
         #     'type': 'Slack',
