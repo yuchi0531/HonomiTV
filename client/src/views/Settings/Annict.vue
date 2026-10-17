@@ -50,14 +50,14 @@
                     </v-btn>
                 </div>
             </div>
-            <div class="settings__item mt-6">
-                <div class="settings__item-heading">視聴記録の自動投稿</div>
-                <div class="settings__item-label">
+            <div class="settings__item settings__item--switch mt-6">
+                <label class="settings__item-heading" for="annict_auto_record_playback">視聴記録の自動投稿</label>
+                <label class="settings__item-label" for="annict_auto_record_playback">
                     Annict の視聴記録 (record) は<b>公開の視聴ログ</b>です。オンにすると、視聴完了したエピソードが Annict 上に記録されます。<br>
                     既定ではオフになっています。オフの間は Annict へ一切書き込みません。<br>
                     同じエピソードは一度しか記録されません。連続放送 (1 本の録画に複数話が入っているもの) は、誤った話へ記録しないため対象外です。<br>
-                </div>
-                <v-switch class="settings__item-switch" color="primary" hide-details
+                </label>
+                <v-switch class="settings__item-switch" color="primary" id="annict_auto_record_playback" hide-details
                     :disabled="userStore.user === null || userStore.user.annict_user_id === null"
                     :loading="isUpdatingAutoRecord"
                     :model-value="userStore.user !== null && userStore.user.annict_auto_record_playback"
