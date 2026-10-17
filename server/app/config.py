@@ -15,6 +15,7 @@ import ruamel.yaml.scalarstring
 from pydantic import (
     BaseModel,
     DirectoryPath,
+    Field,
     FilePath,
     PositiveFloat,
     PositiveInt,
@@ -395,6 +396,33 @@ class WatchUrlConfig(BaseModel):
     type: Literal['watch_url'] = 'watch_url'
 
 
+# 通知するイベントの種類
+## 文字列表現は既存の Enum / Literal の命名規則に合わせて UpperCamelCase にする
+NotificationEventType = Literal[
+    'RecordingStarted',
+    'RecordingCompleted',
+    'ReservationAdded',
+    'ReservationDeleted',
+]
+
+# 既定で通知するイベント
+## 既存の設定にはこの項目が無いため、従来どおり録画完了だけを通知する
+DEFAULT_NOTIFICATION_EVENTS: list[NotificationEventType] = ['RecordingCompleted']
+
+
+def _default_notification_events() -> list[NotificationEventType]:
+    """
+    既定の通知イベントを新しいリストとして返す。
+
+    Returns:
+        list[NotificationEventType]: 既定の通知イベント。
+    """
+
+    # Pydantic の既定値で可変オブジェクトを共有すると、
+    ## 1 つの設定インスタンスへの変更が他のインスタンスへ波及するため、毎回複製して返す
+    return list(DEFAULT_NOTIFICATION_EVENTS)
+
+
 class ServerSettingsNotificationService(BaseModel):
     type: Literal['Telegram', 'Slack', 'Webhook'] = 'Telegram'
     enabled: bool = False
@@ -405,6 +433,9 @@ class ServerSettingsNotificationService(BaseModel):
     webhook_url: str | None = None
     # 視聴URL設定
     watch_urls: list[WatchUrlConfig] = []
+    # 通知するイベントの種類
+    ## 既定は録画完了のみ。既存の config.yaml にこの項目が無くても従来と同じ挙動になる
+    events: list[NotificationEventType] = Field(default_factory=_default_notification_events)
 
 
 class _ServerSettingsNotifications(BaseModel):

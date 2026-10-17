@@ -25,6 +25,7 @@ from app.utils.edcb import (
 )
 from app.utils.edcb.CtrlCmdUtil import CtrlCmdUtil
 from app.utils.edcb.EDCBUtil import EDCBUtil
+from app.utils.NotificationService import NotificationEvent, NotificationManager
 from app.utils.TSInformation import TSInformation
 
 
@@ -963,6 +964,72 @@ async def GetIsRecordingInProgress(reserve_data: ReserveDataRequired, edcb: Ctrl
     return isinstance(await edcb.sendGetRecFilePath(reserve_data['reserve_id']), str)
 
 
+async def NotifyReservationEvent(
+    event_type: Literal['ReservationAdded', 'ReservationDeleted'],
+    network_id: int,
+    transport_stream_id: int,
+    service_id: int,
+    event_id: int,
+    edcb: CtrlCmdUtil,
+) -> None:
+    """
+    録画予約の追加・削除を通知する
+
+    通知の失敗は予約操作そのものを失敗させない。予約は既に EDCB 側で成功しており、
+    ここで例外を投げるとユーザーには失敗に見えてしまうため、ログだけを残す。
+
+    Args:
+        event_type (Literal['ReservationAdded', 'ReservationDeleted']): 通知するイベントの種類。
+        network_id (int): 対象番組のネットワーク ID。
+        transport_stream_id (int): 対象番組のトランスポートストリーム ID。
+        service_id (int): 対象番組のサービス ID。
+        event_id (int): 対象番組のイベント ID。
+        edcb (CtrlCmdUtil): 予約一覧の取得に使う EDCB クライアント。
+
+    Returns:
+        None
+    """
+
+    config = Config()
+    # このイベントを送る通知先が無ければ、予約情報の取得すら行わない
+    if any(
+        service.enabled and event_type in service.events
+        for service in config.notifications.services
+    ) is False:
+        return
+
+    try:
+        # 通知本文には予約 ID や確定した録画設定が必要なため、EDCB が保持している予約一覧から引き直す。
+        ## 予約直後の送信内容をそのまま使うと、再試行で録画時間が補正された場合に実際と食い違う。
+        reserve_data_list = await GetReserveDataList(edcb)
+        reserve_data = next((
+            candidate for candidate in reserve_data_list
+            if candidate['onid'] == network_id and
+                candidate['tsid'] == transport_stream_id and
+                candidate['sid'] == service_id and
+                candidate['eid'] == event_id
+        ), None)
+        # 削除直後は既に一覧から消えているため、その場合は通知しない (対象が特定できない)
+        if reserve_data is None:
+            logging.warning(
+                f'[ReservationsRouter][NotifyReservationEvent] Reservation was not found for notification. '
+                f'[event_type: {event_type} / onid: {network_id} / tsid: {transport_stream_id} / '
+                f'sid: {service_id} / eid: {event_id}]',
+            )
+            return
+
+        reservation = await DecodeEDCBReserveData(
+            reserve_data,
+            is_recording_in_progress = await GetIsRecordingInProgress(reserve_data, edcb),
+        )
+        notification_manager = NotificationManager(config.notifications.services)
+        await notification_manager.send_event(
+            NotificationEvent(event_type, reservation = reservation),
+        )
+    except Exception as ex:
+        logging.warning(f'[ReservationsRouter][NotifyReservationEvent] Failed to send notification: {ex}')
+
+
 @router.get(
     '',
     summary = '録画予約情報一覧 API',
@@ -1305,6 +1372,17 @@ async def AddReservationAPI(
             detail = 'Failed to add a recording reservation due to EDCB rejection or event mismatch',
         )
 
+    # 予約の追加を通知する
+    ## 通知の失敗で予約の成功を覆さないよう、ヘルパー側で例外を握りつぶす
+    await NotifyReservationEvent(
+        'ReservationAdded',
+        channel.network_id,
+        channel.transport_stream_id,
+        channel.service_id,
+        event_id,
+        edcb,
+    )
+
     # どの録画予約 ID で追加されたかは sendAddReserve() のレスポンスからは取れないので、201 Created を返す
 
 
@@ -1388,3 +1466,14 @@ async def DeleteReservationAPI(
             status_code = status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail = 'Failed to delete the specified recording reservation',
         )
+
+    # 予約の削除を通知する
+    ## 削除後は EDCB の予約一覧から消えるため、削除前に取得済みの reserve_data から対象を渡す
+    await NotifyReservationEvent(
+        'ReservationDeleted',
+        reserve_data['onid'],
+        reserve_data['tsid'],
+        reserve_data['sid'],
+        reserve_data['eid'],
+        edcb,
+    )

@@ -11,8 +11,9 @@ import httpx
 
 from app.config import ServerSettingsNotificationService, WatchUrlConfig
 from app.constants import JST
-from app.schemas import RecordedProgram
+from app.schemas import RecordedProgram, Reservation
 from app.utils.NotificationService import (
+    NotificationEvent,
     NotificationManager,
     TelegramNotificationService,
     WebhookNotificationService,
@@ -76,6 +77,89 @@ def BuildRecordedProgram(**overrides: Any) -> RecordedProgram:
     }
     program.update(overrides)
     return RecordedProgram.model_validate(program)
+
+
+def BuildReservation(**overrides: Any) -> Reservation:
+    """
+    通知の検証に必要な最小限の録画予約情報を組み立てる。
+
+    Args:
+        **overrides (Any): 既定値から差し替えるフィールド。
+
+    Returns:
+        Reservation: 検証用の録画予約情報。
+    """
+
+    start_time = datetime(2026, 10, 17, 12, 0, tzinfo=JST)
+    end_time = datetime(2026, 10, 17, 13, 0, tzinfo=JST)
+    reservation: dict[str, Any] = {
+        'id': 501,
+        'channel': {
+            'id': 'NID32736-SID1024',
+            'display_channel_id': 'gr011',
+            'network_id': 32736,
+            'service_id': 1024,
+            'transport_stream_id': 32736,
+            'remocon_id': 1,
+            'channel_number': '011',
+            'type': 'GR',
+            'name': 'テスト放送',
+        },
+        'program': {
+            'id': 'NID32736-SID1024-EID65535',
+            'channel_id': 'NID32736-SID1024',
+            'network_id': 32736,
+            'service_id': 1024,
+            'event_id': 65535,
+            'title': '予約した番組',
+            'description': '予約した番組の概要です。',
+            'detail': {},
+            'start_time': start_time,
+            'end_time': end_time,
+            'duration': 3600.0,
+            'is_free': True,
+            'genres': [],
+            'video_type': None,
+            'video_codec': None,
+            'video_resolution': None,
+            'primary_audio_type': '2/0モード(ステレオ)',
+            'primary_audio_language': '日本語',
+            'primary_audio_sampling_rate': '48kHz',
+            'secondary_audio_type': None,
+            'secondary_audio_language': None,
+            'secondary_audio_sampling_rate': None,
+        },
+        'is_recording_in_progress': False,
+        'recording_availability': 'Full',
+        'comment': '',
+        'scheduled_recording_file_name': 'test.ts',
+        'estimated_recording_file_size': 1024,
+        'record_settings': {
+            'is_enabled_tuner_1': True,
+            'is_enabled_tuner_2': True,
+            'is_enabled_tuner_3': True,
+            'is_enabled_tuner_4': True,
+            'is_enabled_tuner_5': True,
+            'is_enabled_tuner_6': True,
+            'is_enabled_tuner_7': True,
+            'is_enabled_tuner_8': True,
+            'priority': 2,
+            'recording_mode': 'AllServices',
+            'start_margin': 0.0,
+            'end_margin': 0.0,
+            'recording_folder': [],
+            'is_oneseg': False,
+            'is_sid_for_program': False,
+            'is_partial_recording': False,
+            'is_pittari': False,
+            'bat_file_path': '',
+            'is_suspend': False,
+            'is_reboot': False,
+            'specify_service_id': 0,
+        },
+    }
+    reservation.update(overrides)
+    return Reservation.model_validate(reservation)
 
 
 class RecordingHTTPClient:
@@ -189,7 +273,7 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
 
         service = WebhookNotificationService(self._config())
 
-        await service.send_new_recording(BuildRecordedProgram())
+        await service.send_event(NotificationEvent('RecordingCompleted', recorded_program=BuildRecordedProgram()))
 
         self.assertEqual(len(RecordingHTTPClient.requests), 1)
         request = RecordingHTTPClient.requests[0]
@@ -221,7 +305,7 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
             WatchUrlConfig(text='🌐 外部から視聴', base_url='https://external.example.com'),
         ]))
 
-        await service.send_new_recording(BuildRecordedProgram())
+        await service.send_event(NotificationEvent('RecordingCompleted', recorded_program=BuildRecordedProgram()))
 
         fields = RecordingHTTPClient.requests[0]['json']['embeds'][0]['fields']
         links = {field['name']: field['value'] for field in fields if field['inline'] is True}
@@ -235,7 +319,7 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
             WatchUrlConfig(text='🏠 ローカルで視聴', base_url='https://internal.example.com'),
         ]))
 
-        await service.send_new_recording(BuildRecordedProgram(id=-1))
+        await service.send_event(NotificationEvent('RecordingCompleted', recorded_program=BuildRecordedProgram(id=-1)))
 
         fields = RecordingHTTPClient.requests[0]['json']['embeds'][0]['fields']
         self.assertEqual([field['name'] for field in fields], ['チャンネル', '放送時間', '長さ'])
@@ -245,7 +329,7 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
 
         service = WebhookNotificationService(self._config())
 
-        await service.send_new_recording(BuildRecordedProgram(description='あ' * 5000))
+        await service.send_event(NotificationEvent('RecordingCompleted', recorded_program=BuildRecordedProgram(description='あ' * 5000)))
 
         description = RecordingHTTPClient.requests[0]['json']['embeds'][0]['description']
         self.assertLessEqual(len(description), WebhookNotificationService.EMBED_DESCRIPTION_MAX_LENGTH)
@@ -256,12 +340,11 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
 
         service = WebhookNotificationService(self._config())
 
-        await service.send_new_recording(
-            BuildRecordedProgram(title='長' * 500, channel={
+        await service.send_event(NotificationEvent('RecordingCompleted', recorded_program=BuildRecordedProgram(title='長' * 500, channel={
                 'id': 'NID32736-SID1024', 'display_channel_id': 'gr011',
                 'network_id': 32736, 'service_id': 1024, 'transport_stream_id': 32736,
                 'remocon_id': 1, 'channel_number': '011', 'type': 'GR', 'name': '局' * 2000,
-            }),
+            })),
         )
 
         embed = RecordingHTTPClient.requests[0]['json']['embeds'][0]
@@ -282,7 +365,7 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
         ]
         service = WebhookNotificationService(self._config(watch_urls=watch_urls))
 
-        await service.send_new_recording(BuildRecordedProgram(description='あ' * 1000))
+        await service.send_event(NotificationEvent('RecordingCompleted', recorded_program=BuildRecordedProgram(description='あ' * 1000)))
 
         embed = RecordingHTTPClient.requests[0]['json']['embeds'][0]
         self.assertLessEqual(len(embed['fields']), WebhookNotificationService.EMBED_FIELD_MAX_COUNT)
@@ -299,7 +382,7 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
 
         service = WebhookNotificationService(self._config())
 
-        await service.send_new_recording(BuildRecordedProgram(description=''))
+        await service.send_event(NotificationEvent('RecordingCompleted', recorded_program=BuildRecordedProgram(description='')))
 
         description = RecordingHTTPClient.requests[0]['json']['embeds'][0]['description']
         self.assertIn('テストニュース', description)
@@ -315,7 +398,7 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
             thumbnail_path.write_bytes(b'RIFFxxxxWEBP')
 
             service = WebhookNotificationService(self._config())
-            await service.send_new_recording(BuildRecordedProgram(), anyio.Path(thumbnail_path))
+            await service.send_event(NotificationEvent('RecordingCompleted', recorded_program=BuildRecordedProgram()), anyio.Path(thumbnail_path))
 
         request = RecordingHTTPClient.requests[0]
         # 添付を送る場合は JSON ではなく payload_json に入れる
@@ -331,8 +414,8 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
 
         service = WebhookNotificationService(self._config())
 
-        await service.send_new_recording(
-            BuildRecordedProgram(),
+        await service.send_event(
+            NotificationEvent('RecordingCompleted', recorded_program=BuildRecordedProgram()),
             anyio.Path('/nonexistent/thumbnail.webp'),
         )
 
@@ -351,13 +434,93 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request['json']['embeds'][0]['title'], '🔔 通知設定テスト')
         self.assertNotIn('image', request['json']['embeds'][0])
 
+    async def test_sends_recording_started_event_with_its_own_heading(self) -> None:
+        """録画開始イベントは録画完了とは別の見出しで送られる。"""
+
+        service = WebhookNotificationService(self._config(events=['RecordingStarted']))
+
+        await service.send_event(NotificationEvent('RecordingStarted', recorded_program=BuildRecordedProgram()))
+
+        self.assertEqual(len(RecordingHTTPClient.requests), 1)
+        embed = RecordingHTTPClient.requests[0]['json']['embeds'][0]
+        self.assertEqual(embed['title'], '⏺ 録画を開始しました')
+        # 録画完了の見出しとは異なる
+        self.assertNotEqual(embed['title'], '📺 新しい録画を検出しました')
+
+    async def test_sends_reservation_added_event(self) -> None:
+        """予約追加イベントは予約 ID と番組情報を Embed に含める。"""
+
+        service = WebhookNotificationService(self._config(events=['ReservationAdded']))
+
+        await service.send_event(NotificationEvent('ReservationAdded', reservation=BuildReservation()))
+
+        embed = RecordingHTTPClient.requests[0]['json']['embeds'][0]
+        self.assertEqual(embed['title'], '🗓 録画予約を追加しました')
+        self.assertIn('予約した番組', embed['description'])
+        fields = {field['name']: field['value'] for field in embed['fields']}
+        self.assertEqual(fields['予約 ID'], '501')
+        self.assertEqual(fields['チャンネル'], 'テスト放送')
+        self.assertEqual(fields['長さ'], '1時間0分')
+
+    async def test_sends_reservation_deleted_event(self) -> None:
+        """予約削除イベントも削除した予約の内容を通知する。"""
+
+        service = WebhookNotificationService(self._config(events=['ReservationDeleted']))
+
+        await service.send_event(NotificationEvent('ReservationDeleted', reservation=BuildReservation()))
+
+        embed = RecordingHTTPClient.requests[0]['json']['embeds'][0]
+        self.assertEqual(embed['title'], '🗑 録画予約を削除しました')
+        self.assertIn('予約した番組', embed['description'])
+
+    async def test_skips_events_not_selected_in_settings(self) -> None:
+        """設定で選択していないイベントは送信しない。"""
+
+        # 録画完了だけを購読している通知先
+        service = WebhookNotificationService(self._config(events=['RecordingCompleted']))
+
+        await service.send_event(NotificationEvent('RecordingStarted', recorded_program=BuildRecordedProgram()))
+        await service.send_event(NotificationEvent('ReservationAdded', reservation=BuildReservation()))
+
+        self.assertEqual(RecordingHTTPClient.requests, [])
+
+    async def test_default_events_are_recording_completed_only(self) -> None:
+        """既存の設定 (events 未指定) は従来どおり録画完了だけを通知する。"""
+
+        # events を明示しない設定では従来と同じ挙動になる
+        config = ServerSettingsNotificationService(
+            type='Webhook', enabled=True, webhook_url='https://example.test/hook',
+        )
+        self.assertEqual(config.events, ['RecordingCompleted'])
+
+        service = WebhookNotificationService(config)
+        await service.send_event(NotificationEvent('RecordingStarted', recorded_program=BuildRecordedProgram()))
+        await service.send_event(NotificationEvent('RecordingCompleted', recorded_program=BuildRecordedProgram()))
+
+        # 録画完了の 1 回だけ送られる
+        self.assertEqual(len(RecordingHTTPClient.requests), 1)
+        self.assertEqual(
+            RecordingHTTPClient.requests[0]['json']['embeds'][0]['title'],
+            '📺 新しい録画を検出しました',
+        )
+
+    async def test_event_selection_does_not_leak_between_instances(self) -> None:
+        """既定のイベント一覧を共有しないため、1つの設定変更が他へ波及しない。"""
+
+        first = ServerSettingsNotificationService(type='Webhook', enabled=True, webhook_url='https://example.test/a')
+        second = ServerSettingsNotificationService(type='Webhook', enabled=True, webhook_url='https://example.test/b')
+
+        first.events.append('RecordingStarted')
+
+        self.assertEqual(second.events, ['RecordingCompleted'])
+
     async def test_raises_when_webhook_url_is_blank(self) -> None:
         """Webhook URL が空の場合は送信せずに失敗する。"""
 
         service = WebhookNotificationService(self._config(webhook_url='   '))
 
         with self.assertRaises(ValueError):
-            await service.send_new_recording(BuildRecordedProgram())
+            await service.send_event(NotificationEvent('RecordingCompleted', recorded_program=BuildRecordedProgram()))
         self.assertEqual(RecordingHTTPClient.requests, [])
 
     async def test_propagates_http_error(self) -> None:
@@ -367,14 +530,14 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
         service = WebhookNotificationService(self._config())
 
         with self.assertRaises(httpx.HTTPStatusError):
-            await service.send_new_recording(BuildRecordedProgram())
+            await service.send_event(NotificationEvent('RecordingCompleted', recorded_program=BuildRecordedProgram()))
 
     async def test_unknown_channel_falls_back_to_placeholder(self) -> None:
         """チャンネル情報が無い録画でも通知できる。"""
 
         service = WebhookNotificationService(self._config())
 
-        await service.send_new_recording(BuildRecordedProgram(channel=None))
+        await service.send_event(NotificationEvent('RecordingCompleted', recorded_program=BuildRecordedProgram(channel=None)))
 
         fields = RecordingHTTPClient.requests[0]['json']['embeds'][0]['fields']
         channel_field = next(field for field in fields if field['name'] == 'チャンネル')
@@ -465,7 +628,7 @@ class NotificationManagerTest(unittest.IsolatedAsyncioTestCase):
                 ServerSettingsNotificationService(type='Webhook', enabled=True, webhook_url='https://example.test/b'),
             ])
             # send_new_recording は例外を握りつぶしてログに出すだけなので、呼び出しが完了することを確認する
-            await manager.send_new_recording(BuildRecordedProgram())
+            await manager.send_event(NotificationEvent('RecordingCompleted', recorded_program=BuildRecordedProgram()))
 
         # 2 サービスとも送信が試行されている
         self.assertEqual(len(RecordingHTTPClient.requests), 2)
