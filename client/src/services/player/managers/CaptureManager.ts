@@ -258,6 +258,51 @@ class CaptureManager implements PlayerManager {
 
 
     /**
+     * キャプチャを 16:9 の表示アスペクト比へ補正する
+     *
+     * 1080p などの配信品質は 1440×1080 (4:3) のフレームに SAR (画素アスペクト比) 4:3 を付けて
+     * 16:9 を表現している。プレイヤーはこの SAR を反映して 16:9 で表示するが、
+     * createImageBitmap(video) はブラウザによって SAR を適用するかが異なり、
+     * 適用されない場合は横に潰れた 1440×1080 の画像が保存されてしまう。
+     * 画面上の見た目どおりの 16:9 で保存するため、縦解像度を保ったまま横方向へ引き伸ばす。
+     *
+     * @param source 補正対象のキャプチャ
+     * @returns 16:9 に補正したキャプチャ (既に 16:9 の場合はそのまま)
+     */
+    private async fixCaptureAspectRatio(source: ImageBitmap): Promise<ImageBitmap> {
+
+        const target_aspect_ratio = 16 / 9;
+        const current_aspect_ratio = source.width / source.height;
+
+        // 誤差 1% 以内は補正しない (丸め誤差で毎回リサイズするのを避ける)
+        if (Math.abs(current_aspect_ratio - target_aspect_ratio) / target_aspect_ratio < 0.01) {
+            return source;
+        }
+
+        // 縦解像度を保ち、横だけを 16:9 に合わせる (元の画素を欠落させない)
+        const corrected_width = Math.round(source.height * target_aspect_ratio);
+        if (corrected_width === source.width) {
+            return source;
+        }
+
+        const canvas = new OffscreenCanvas(corrected_width, source.height);
+        const context = canvas.getContext('2d', {
+            alpha: false,
+            desynchronized: true,
+            willReadFrequently: false,
+        })!;
+        // 縦横比の補正は引き伸ばしになるため、ジャギーを抑える補間品質を指定する
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
+        context.drawImage(source, 0, 0, corrected_width, source.height);
+
+        // 使い終わった ImageBitmap を解放してから返す
+        source.close();
+        return await createImageBitmap(canvas);
+    }
+
+
+    /**
      * 現在のL字画面クロップ設定に合わせてキャプチャをクロップする
      * @param source クロップ対象のキャプチャ
      * @returns クロップ後のキャプチャ
@@ -403,6 +448,9 @@ class CaptureManager implements PlayerManager {
 
         // 動画のキャプチャ
         let capture_image_bitmap = create_image_bitmap_results[0];
+        // 1440×1080 の配信など、SAR で 16:9 を表現している映像を見た目どおりの比率へ補正する
+        // L字画面のクロップは補正後の 16:9 画像を前提に位置を計算するため、必ずクロップより先に適用する
+        capture_image_bitmap = await this.fixCaptureAspectRatio(capture_image_bitmap);
         // L字画面のクロップが有効な場合のみ、キャプチャにクロップ処理を適用
         if (settings_store.settings.lshaped_screen_crop_enabled) {
             capture_image_bitmap = await this.cropImageForLShapedScreen(capture_image_bitmap);

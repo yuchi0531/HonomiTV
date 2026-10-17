@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type DPlayer from 'dplayer';
 
@@ -55,5 +55,96 @@ describe('キャプチャフォントの失敗を再生から分離する', () =
         expect(player.notice).toHaveBeenCalledWith(expect.stringContaining('もう一度キャプチャしてください'),
             undefined, undefined, '#FF6F6A');
         expect(player.container.querySelector('.dplayer-capturing')).toBeNull();
+    });
+});
+
+describe('キャプチャのアスペクト比補正', () => {
+
+    // happy-dom には OffscreenCanvas が無いため、実装が使う API だけを差し替える
+    class StubOffscreenCanvas {
+        public readonly width: number;
+        public readonly height: number;
+        public readonly drawn: number[][] = [];
+        constructor(width: number, height: number) {
+            this.width = width;
+            this.height = height;
+        }
+        getContext() {
+            return {
+                imageSmoothingEnabled: false,
+                imageSmoothingQuality: 'low',
+                drawImage: (...args: number[]) => { this.drawn.push(args); },
+            };
+        }
+    }
+
+    const createBitmap = (width: number, height: number) => ({
+        width, height, close: vi.fn(),
+    }) as unknown as ImageBitmap;
+
+    let created: {width: number; height: number}[] = [];
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        created = [];
+        vi.stubGlobal('OffscreenCanvas', StubOffscreenCanvas);
+        // createImageBitmap(OffscreenCanvas) はキャンバスの寸法を引き継ぐ
+        vi.stubGlobal('createImageBitmap', vi.fn(async (source: {width: number; height: number}) => {
+            created.push({width: source.width, height: source.height});
+            return {width: source.width, height: source.height, close: vi.fn()} as unknown as ImageBitmap;
+        }));
+    });
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    // private メソッドを直接検証する (キャプチャ全体の合成は Web Worker 側の責務)
+    const fix = (manager: CaptureManager, bitmap: ImageBitmap) =>
+        (manager as unknown as {fixCaptureAspectRatio: (source: ImageBitmap) => Promise<ImageBitmap>})
+            .fixCaptureAspectRatio(bitmap);
+
+    it('1440×1080 (SAR 4:3) の映像を 16:9 の 1920×1080 へ引き伸ばす', async () => {
+        const manager = new CaptureManager(createPlayer(), 'Live');
+        const source = createBitmap(1440, 1080);
+
+        const fixed = await fix(manager, source);
+
+        expect(fixed.width).toBe(1920);
+        expect(fixed.height).toBe(1080);
+        // 補正後の比率がちょうど 16:9 になっている
+        expect(fixed.width / fixed.height).toBeCloseTo(16 / 9, 5);
+        // 元のビットマップは解放される
+        expect(source.close).toHaveBeenCalledOnce();
+    });
+
+    it.each([
+        ['1920×1080 (既に 16:9)', 1920, 1080],
+        ['1280×720', 1280, 720],
+        ['854×480', 854, 480],
+    ])('%s は補正しない', async (_label, width, height) => {
+        const manager = new CaptureManager(createPlayer(), 'Live');
+        const source = createBitmap(width, height);
+
+        const fixed = await fix(manager, source);
+
+        // 同じインスタンスをそのまま返し、余計なリサイズをしない
+        expect(fixed).toBe(source);
+        expect(source.close).not.toHaveBeenCalled();
+        expect(created).toHaveLength(0);
+    });
+
+    it('4:3 の 810p (1440×810 を SAR で 16:9 にしている場合) は比率だけで判定する', async () => {
+        const manager = new CaptureManager(createPlayer(), 'Live');
+        // 1440×810 は既に 16:9 なので補正しない
+        const source = createBitmap(1440, 810);
+
+        expect(await fix(manager, source)).toBe(source);
+    });
+
+    it('丸め誤差程度のずれは補正しない', async () => {
+        const manager = new CaptureManager(createPlayer(), 'Live');
+        // 16:9 から 0.5% 程度しかずれていない画像は、毎回リサイズしない
+        const source = createBitmap(1920, 1082);
+
+        expect(await fix(manager, source)).toBe(source);
     });
 });
