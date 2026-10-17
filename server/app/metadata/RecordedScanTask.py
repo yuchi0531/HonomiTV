@@ -16,7 +16,7 @@ from tortoise.exceptions import IntegrityError
 from watchfiles import Change, awatch
 
 from app import logging, schemas
-from app.config import Config
+from app.config import Config, NotificationEventType
 from app.constants import JST, THUMBNAILS_DIR
 from app.metadata.CMSectionsDetector import CMSectionsDetector
 from app.metadata.MetadataAnalyzer import MetadataAnalyzer
@@ -32,7 +32,7 @@ from app.utils import (
     SubmitToProcessPoolExecutor,
 )
 from app.utils.DriveIOLimiter import DriveIOLimiter
-from app.utils.NotificationService import NotificationManager
+from app.utils.NotificationService import NotificationEvent, NotificationManager
 from app.utils.ProcessLimiter import ProcessLimiter
 from app.utils.RecordingStatusProvider import (
     ActiveRecordingFilePaths,
@@ -168,6 +168,13 @@ class RecordedScanTask:
 
         # 録画中ファイルの状態管理
         self._recording_files: dict[anyio.Path, FileRecordingInfo] = {}
+        # 録画開始を通知済みのファイルパス
+        ## 参照箇所: processRecordedFile() の録画中判定
+        ## 前提条件: 録画中はファイル更新のたびに同じ分岐を通るため、通知は初回だけに抑える
+        self._notified_recording_started: set[anyio.Path] = set()
+        # 録画開始通知の送信タスクへの強参照
+        ## GC でタスクが破棄されて通知が送られないことを防ぐ
+        self._notification_tasks: set[asyncio.Task[None]] = set()
         # 録画バックエンドが把握している録画中ファイルパスの短時間キャッシュ
         ## ファイル変更イベントや一括スキャンで同じ情報を何度も参照するため、バックエンドへの問い合わせを数秒単位でまとめる。
         self._active_recording_paths_cache: ActiveRecordingFilePaths | None = None
@@ -1254,6 +1261,21 @@ class RecordedScanTask:
                         file_size = file_size,
                         mtime_continuous_start_at = file_modified_at,  # 初回は必ず mtime_continuous_start_at を設定
                     )
+                    # 録画開始の通知は「新規に録画中と判定された最初の 1 回」だけ送る。
+                    ## 録画中はファイル更新のたびにこの分岐を通るため、毎回通知するとスパムになる。
+                    if file_path not in self._notified_recording_started:
+                        self._notified_recording_started.add(file_path)
+                        # 通知の送信待ちで録画ファイルの処理を止めないよう、バックグラウンドで送る
+                        ## 実行中タスクへの強参照を保持し、完了時だけ集合から取り除く
+                        if self._hasEnabledNotificationFor('RecordingStarted'):
+                            notification_program = recorded_program.model_copy(deep=True)
+                            notification_program.recorded_video.status = 'Recording'
+                            notification_task = asyncio.create_task(self._sendNewFileNotification(
+                                notification_program,
+                                event_type = 'RecordingStarted',
+                            ))
+                            self._notification_tasks.add(notification_task)
+                            notification_task.add_done_callback(self._notification_tasks.discard)
                     logging.debug(f'{file_path}: This file is recording or copying. (duration {recorded_program.recorded_video.duration:.1f}s >= {self.MINIMUM_RECORDING_SECONDS}s)')
                 else:
                     # status を Recorded に設定
@@ -1263,6 +1285,8 @@ class RecordedScanTask:
                     # 録画バックエンドから信頼できる「現在録画中ではない」結果が得られた場合も、ローカル推測状態をクリアする。
                     if force_update or active_recording_file_paths.is_reliable is True:
                         self._recording_files.pop(file_path, None)
+                    # 録画が終わったので、同じパスが再び録画中になったときに再度通知できるよう状態を戻す
+                    self._notified_recording_started.discard(file_path)
 
                 # __saveRecordedMetadataToDB() は既存の RecordedVideo ORM インスタンスをそのまま更新する。
                 ## そのため保存後に existing_db_recorded_video_after_analyze.status を参照すると、
@@ -1604,12 +1628,37 @@ class RecordedScanTask:
 
 
 
-    async def _sendNewFileNotification(self, recorded_program: schemas.RecordedProgram) -> None:
+    def _hasEnabledNotificationFor(self, event_type: NotificationEventType) -> bool:
+        """
+        指定されたイベントを送る通知先が 1 つ以上あるかを返す
+
+        通知の組み立てや送信はコストがかかるため、送り先が無い場合は
+        無駄なオブジェクト生成とタスク起動を行わない。
+
+        Args:
+            event_type (NotificationEventType): 判定するイベントの種類。
+
+        Returns:
+            bool: 送信先が 1 つ以上ある場合は True。
+        """
+
+        return any(
+            service.enabled and event_type in service.events
+            for service in self.config.notifications.services
+        )
+
+
+    async def _sendNewFileNotification(
+        self,
+        recorded_program: schemas.RecordedProgram,
+        event_type: NotificationEventType = 'RecordingCompleted',
+    ) -> None:
         """
         新規録画ファイルの通知を送信する
 
         Args:
             recorded_program: 録画番組情報
+            event_type: 送信するイベントの種類 (録画開始 or 録画完了)
         """
         try:
             notification_manager = NotificationManager(self.config.notifications.services)
@@ -1630,9 +1679,9 @@ class RecordedScanTask:
             # サムネイルパスを取得
             thumbnail_path = anyio.Path(str(THUMBNAILS_DIR)) / f'{recorded_program.recorded_video.file_hash}.webp'
 
-            await notification_manager.send_new_recording(
-                recorded_program=notification_recorded_program,
-                thumbnail_path=thumbnail_path if await thumbnail_path.exists() else None
+            await notification_manager.send_event(
+                event = NotificationEvent(event_type, recorded_program = notification_recorded_program),
+                thumbnail_path = thumbnail_path if await thumbnail_path.exists() else None,
             )
         except Exception as e:
             logging.warning(f'通知送信に失敗しました: {e}')

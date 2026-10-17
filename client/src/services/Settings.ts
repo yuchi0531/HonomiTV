@@ -105,6 +105,13 @@ export interface IClientSettings {
     tweet_capture_watermark_position: 'None' | 'TopLeft' | 'TopRight' | 'BottomLeft' | 'BottomRight';
 }
 
+/** 通知するイベントの種類 (サーバー側の NotificationEventType に対応) */
+export type NotificationEventType =
+    | 'RecordingStarted'
+    | 'RecordingCompleted'
+    | 'ReservationAdded'
+    | 'ReservationDeleted';
+
 /**
  * サーバー設定を表すインターフェース
  * サーバー側の app.config.ServerSettings で定義されているものと同じ
@@ -150,6 +157,8 @@ export interface IServerSettings {
                 base_url: string;
                 type: 'watch_url';
             }>;
+            // 通知するイベントの種類 (未指定の場合は録画完了のみ)
+            events?: NotificationEventType[];
         }>;
     };
 }

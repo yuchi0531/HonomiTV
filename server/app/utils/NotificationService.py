@@ -9,7 +9,42 @@ import anyio
 import httpx
 
 from app import logging, schemas
-from app.config import ServerSettingsNotificationService
+from app.config import NotificationEventType, ServerSettingsNotificationService
+
+
+class NotificationEvent:
+    """
+    通知するイベントを表すクラス。
+
+    どの通知先にも同じ内容を送るため、サービス側はこのクラスを受け取って
+    自分たちの形式へ整形するだけで済む。
+    """
+
+    # イベントの種類
+    type: NotificationEventType
+    # 録画イベントの対象 (予約イベントでは None)
+    recorded_program: schemas.RecordedProgram | None
+    # 予約イベントの対象 (録画イベントでは None)
+    reservation: schemas.Reservation | None
+
+    def __init__(
+        self,
+        type: NotificationEventType,
+        recorded_program: schemas.RecordedProgram | None = None,
+        reservation: schemas.Reservation | None = None,
+    ):
+        """
+        通知イベントを初期化する。
+
+        Args:
+            type (NotificationEventType): イベントの種類。
+            recorded_program (schemas.RecordedProgram | None): 録画イベントの対象。
+            reservation (schemas.Reservation | None): 予約イベントの対象。
+        """
+
+        self.type = type
+        self.recorded_program = recorded_program
+        self.reservation = reservation
 
 
 class NotificationService(ABC):
@@ -20,18 +55,31 @@ class NotificationService(ABC):
     def __init__(self, config: ServerSettingsNotificationService):
         self.config = config
 
-    @abstractmethod
-    async def send_new_recording(
-        self,
-        recorded_program: schemas.RecordedProgram,
-        thumbnail_path: anyio.Path | None = None
-    ) -> None:
+    def isEventEnabled(self, event_type: NotificationEventType) -> bool:
         """
-        新規録画ファイルの通知を送信する
+        指定されたイベントをこの通知先へ送るかどうかを返す。
 
         Args:
-            recorded_program: 録画番組情報
-            thumbnail_path: サムネイル画像のパス（存在する場合）
+            event_type (NotificationEventType): 判定するイベントの種類。
+
+        Returns:
+            bool: 送信する場合は True。
+        """
+
+        return event_type in self.config.events
+
+    @abstractmethod
+    async def send_event(
+        self,
+        event: NotificationEvent,
+        thumbnail_path: anyio.Path | None = None,
+    ) -> None:
+        """
+        イベント通知を送信する
+
+        Args:
+            event (NotificationEvent): 送信するイベント。
+            thumbnail_path (anyio.Path | None): サムネイル画像のパス（存在する場合）。
         """
         pass
 
@@ -57,18 +105,24 @@ class TelegramNotificationService(NotificationService):
         self.chat_id = config.chat_id
         self.base_url = f'https://api.telegram.org/bot{self.bot_token}'
 
-    async def send_new_recording(
+    async def send_event(
         self,
-        recorded_program: schemas.RecordedProgram,
-        thumbnail_path: anyio.Path | None = None
+        event: NotificationEvent,
+        thumbnail_path: anyio.Path | None = None,
     ) -> None:
-        """新規録画ファイルの通知を送信"""
+        """イベント通知を送信"""
+
+        # この通知先が受け取らないイベントは何もしない
+        if self.isEventEnabled(event.type) is False:
+            return
 
         # メッセージテキストを構築
-        message = self._build_recording_message(recorded_program)
+        message = self._build_event_message(event)
 
         try:
-            if thumbnail_path and await thumbnail_path.exists():
+            # サムネイルを添付できるのは録画イベントだけ
+            recorded_program = event.recorded_program
+            if recorded_program is not None and thumbnail_path is not None and await thumbnail_path.exists():
                 # サムネイル付きで送信
                 await self._send_photo_with_caption(message, thumbnail_path, recorded_program)
             else:
@@ -78,10 +132,95 @@ class TelegramNotificationService(NotificationService):
             logging.warning(f'Telegram通知の送信に失敗しました: {ex}')
             raise
 
+
+    def _build_event_message(self, event: NotificationEvent) -> str:
+        """
+        イベント種別に応じたメッセージ本文を構築する
+
+        Args:
+            event (NotificationEvent): 送信するイベント。
+
+        Returns:
+            str: Telegram へ送る本文。
+        """
+
+        if event.type == 'RecordingStarted':
+            assert event.recorded_program is not None
+            return self._build_recording_message(
+                event.recorded_program,
+                heading = '⏺ **録画を開始しました**',
+            )
+        if event.type == 'RecordingCompleted':
+            assert event.recorded_program is not None
+            # 従来と同じ本文を維持する (既存ユーザーの見た目を変えない)
+            return self._build_recording_message(
+                event.recorded_program,
+                heading = '📺 **新しい録画を検出しました**',
+            )
+        assert event.reservation is not None
+        if event.type == 'ReservationAdded':
+            return self._build_reservation_message(event.reservation, heading = '🗓 **録画予約を追加しました**')
+        return self._build_reservation_message(event.reservation, heading = '🗑 **録画予約を削除しました**')
+
+
+    def _build_reservation_message(self, reservation: schemas.Reservation, heading: str) -> str:
+        """
+        予約情報からメッセージ本文を構築する
+
+        Args:
+            reservation (schemas.Reservation): 予約情報。
+            heading (str): 先頭に付ける見出し。
+
+        Returns:
+            str: Telegram へ送る本文。
+        """
+
+        program = reservation.program
+        duration_seconds = (program.end_time - program.start_time).total_seconds()
+        duration_str = self._format_duration_seconds(duration_seconds)
+
+        # 番組概要を 200 文字に制限する
+        description = program.description
+        if len(description) > 200:
+            description = description[:200] + '...'
+
+        return f"""{heading}
+
+📹 **番組情報**
+タイトル：{program.title}
+チャンネル：{reservation.channel.name}
+放送時間：{program.start_time.strftime('%Y/%m/%d %H:%M')} - {program.end_time.strftime('%H:%M')}
+長さ：{duration_str}
+
+📝 **番組概要**
+{description}"""
+
+
+    @staticmethod
+    def _format_duration_seconds(duration_seconds: float) -> str:
+        """
+        秒数を「○時間○分」形式の文字列にする
+
+        Args:
+            duration_seconds (float): 秒数。
+
+        Returns:
+            str: 整形された時間。
+        """
+
+        duration_hours = int(duration_seconds // 3600)
+        duration_minutes = int((duration_seconds % 3600) // 60)
+        if duration_hours > 0:
+            return f'{duration_hours}時間{duration_minutes}分'
+        return f'{duration_minutes}分'
+
     async def send_test(self, recorded_program: schemas.RecordedProgram) -> None:
         """テスト通知を送信"""
 
-        message = "🔔 **通知設定テスト**\n\n" + self._build_recording_message(recorded_program)
+        message = "🔔 **通知設定テスト**\n\n" + self._build_recording_message(
+            recorded_program,
+            heading = '📺 **新しい録画を検出しました**',
+        )
 
         try:
             await self._send_text_message(message, recorded_program)
@@ -89,18 +228,21 @@ class TelegramNotificationService(NotificationService):
             logging.warning(f'Telegram テスト通知の送信に失敗しました: {ex}')
             raise
 
-    def _build_recording_message(self, recorded_program: schemas.RecordedProgram) -> str:
-        """録画番組情報からメッセージテキストを構築"""
+    def _build_recording_message(self, recorded_program: schemas.RecordedProgram, heading: str) -> str:
+        """
+        録画番組情報からメッセージテキストを構築する
+
+        Args:
+            recorded_program (schemas.RecordedProgram): 録画番組情報。
+            heading (str): 先頭に付ける見出し。
+
+        Returns:
+            str: Telegram へ送る本文。
+        """
 
         # 録画時間を計算
         duration_seconds = (recorded_program.end_time - recorded_program.start_time).total_seconds()
-        duration_hours = int(duration_seconds // 3600)
-        duration_minutes = int((duration_seconds % 3600) // 60)
-
-        if duration_hours > 0:
-            duration_str = f'{duration_hours}時間{duration_minutes}分'
-        else:
-            duration_str = f'{duration_minutes}分'
+        duration_str = self._format_duration_seconds(duration_seconds)
 
         # チャンネル名を取得（存在する場合）
         channel_name = recorded_program.channel.name if recorded_program.channel else '不明なチャンネル'
@@ -111,7 +253,7 @@ class TelegramNotificationService(NotificationService):
             description = description[:200] + '...'
 
         # メッセージを構築
-        message = f"""📺 **新しい録画を検出しました**
+        message = f"""{heading}
 
 📹 **番組情報**
 タイトル：{recorded_program.title}
@@ -249,17 +391,22 @@ class WebhookNotificationService(NotificationService):
             return text
         return text[:max_length - 3] + '...'
 
-    async def send_new_recording(
+    async def send_event(
         self,
-        recorded_program: schemas.RecordedProgram,
-        thumbnail_path: anyio.Path | None = None
+        event: NotificationEvent,
+        thumbnail_path: anyio.Path | None = None,
     ) -> None:
-        """新規録画ファイルの通知を送信"""
+        """イベント通知を送信"""
+
+        # この通知先が受け取らないイベントは何もしない
+        if self.isEventEnabled(event.type) is False:
+            return
 
         try:
             await self._send_embed(
-                payload = self._build_recording_payload(recorded_program),
-                thumbnail_path = thumbnail_path,
+                payload = self._build_event_payload(event),
+                # サムネイルを添付できるのは録画イベントだけ
+                thumbnail_path = thumbnail_path if event.recorded_program is not None else None,
             )
         except Exception as ex:
             logging.warning(f'Webhook 通知の送信に失敗しました: {ex}')
@@ -270,12 +417,61 @@ class WebhookNotificationService(NotificationService):
 
         try:
             await self._send_embed(
-                payload = self._build_recording_payload(recorded_program, is_test=True),
+                payload = self._build_event_payload(
+                    NotificationEvent('RecordingCompleted', recorded_program=recorded_program),
+                    is_test = True,
+                ),
                 thumbnail_path = None,
             )
         except Exception as ex:
             logging.warning(f'Webhook テスト通知の送信に失敗しました: {ex}')
             raise
+
+
+    def _build_event_payload(self, event: NotificationEvent, is_test: bool = False) -> dict[str, Any]:
+        """
+        イベント種別に応じた Webhook ペイロードを構築する
+
+        Args:
+            event (NotificationEvent): 送信するイベント。
+            is_test (bool): テスト通知かどうか。
+
+        Returns:
+            dict[str, Any]: Webhook へ送信する JSON ペイロード。
+        """
+
+        # イベント種別ごとの見出し
+        event_titles: dict[NotificationEventType, str] = {
+            'RecordingStarted': '⏺ 録画を開始しました',
+            'RecordingCompleted': '📺 新しい録画を検出しました',
+            'ReservationAdded': '🗓 録画予約を追加しました',
+            'ReservationDeleted': '🗑 録画予約を削除しました',
+        }
+        title = '🔔 通知設定テスト' if is_test else event_titles[event.type]
+
+        # 録画イベントは録画番組、予約イベントは予約情報からフィールドを組み立てる
+        if event.recorded_program is not None:
+            return self._build_recording_payload(event.recorded_program, title)
+        assert event.reservation is not None
+        return self._build_reservation_payload(event.reservation, title)
+
+    @staticmethod
+    def _format_duration_seconds(duration_seconds: float) -> str:
+        """
+        秒数を「○時間○分」形式の文字列にする
+
+        Args:
+            duration_seconds (float): 秒数。
+
+        Returns:
+            str: 整形された時間。
+        """
+
+        duration_hours = int(duration_seconds // 3600)
+        duration_minutes = int((duration_seconds % 3600) // 60)
+        if duration_hours > 0:
+            return f'{duration_hours}時間{duration_minutes}分'
+        return f'{duration_minutes}分'
 
     def _format_duration(self, recorded_program: schemas.RecordedProgram) -> str:
         """
@@ -289,11 +485,7 @@ class WebhookNotificationService(NotificationService):
         """
 
         duration_seconds = (recorded_program.end_time - recorded_program.start_time).total_seconds()
-        duration_hours = int(duration_seconds // 3600)
-        duration_minutes = int((duration_seconds % 3600) // 60)
-        if duration_hours > 0:
-            return f'{duration_hours}時間{duration_minutes}分'
-        return f'{duration_minutes}分'
+        return self._format_duration_seconds(duration_seconds)
 
     def _build_watch_links(self, recorded_program: schemas.RecordedProgram) -> list[dict[str, Any]]:
         """
@@ -325,7 +517,7 @@ class WebhookNotificationService(NotificationService):
     def _build_recording_payload(
         self,
         recorded_program: schemas.RecordedProgram,
-        is_test: bool = False,
+        title: str,
     ) -> dict[str, Any]:
         """
         録画番組情報から Webhook へ POST する JSON を構築する
@@ -336,7 +528,7 @@ class WebhookNotificationService(NotificationService):
 
         Args:
             recorded_program (schemas.RecordedProgram): 録画番組情報。
-            is_test (bool): テスト通知かどうか。
+            title (str): Embed の見出し。
 
         Returns:
             dict[str, Any]: Webhook へ送信する JSON ペイロード。
@@ -350,8 +542,6 @@ class WebhookNotificationService(NotificationService):
             f'**{recorded_program.title}**\n\n{recorded_program.description}',
             self.EMBED_DESCRIPTION_MAX_LENGTH,
         )
-
-        title = '🔔 通知設定テスト' if is_test else '📺 新しい録画を検出しました'
 
         fields: list[dict[str, Any]] = [
             {
@@ -382,6 +572,53 @@ class WebhookNotificationService(NotificationService):
                 'footer': {'text': 'KonomiTV'},
             }],
             # Discord では Embed 内のリンクをそのまま開けるため、メンション制御だけ明示する
+            'allowed_mentions': {'parse': []},
+        }
+
+    def _build_reservation_payload(self, reservation: schemas.Reservation, title: str) -> dict[str, Any]:
+        """
+        予約情報から Webhook へ POST する JSON を構築する
+
+        Args:
+            reservation (schemas.Reservation): 予約情報。
+            title (str): Embed の見出し。
+
+        Returns:
+            dict[str, Any]: Webhook へ送信する JSON ペイロード。
+        """
+
+        program = reservation.program
+        description = self._truncate(
+            f'**{program.title}**\n\n{program.description}',
+            self.EMBED_DESCRIPTION_MAX_LENGTH,
+        )
+
+        fields: list[dict[str, Any]] = [
+            {
+                'name': 'チャンネル',
+                'value': self._truncate(reservation.channel.name, self.EMBED_FIELD_VALUE_MAX_LENGTH),
+                'inline': True,
+            },
+            {'name': '放送時間', 'value': (
+                f'{program.start_time.strftime("%Y/%m/%d %H:%M")} - '
+                f'{program.end_time.strftime("%H:%M")}'
+            ), 'inline': True},
+            {'name': '長さ', 'value': self._format_duration_seconds(
+                (program.end_time - program.start_time).total_seconds(),
+            ), 'inline': True},
+        ]
+        # 予約 ID は視聴ページを持たないため、リンクではなく素の値をフィールドとして添える
+        fields.append({'name': '予約 ID', 'value': str(reservation.id), 'inline': True})
+        fields = self._fit_fields_within_total_limit(fields, len(description) + len(title))
+
+        return {
+            'embeds': [{
+                'title': title,
+                'description': description,
+                'color': self.EMBED_COLOR,
+                'fields': fields,
+                'footer': {'text': 'KonomiTV'},
+            }],
             'allowed_mentions': {'parse': []},
         }
 
@@ -486,19 +723,30 @@ class NotificationManager:
                 # 将来的にSlackサポートを追加
                 logging.warning('Slack通知は現在サポートされていません')
 
-    async def send_new_recording(
+    async def send_event(
         self,
-        recorded_program: schemas.RecordedProgram,
+        event: NotificationEvent,
         thumbnail_path: anyio.Path | None = None
     ) -> None:
-        """全ての有効な通知サービスに新規録画通知を送信"""
+        """
+        全ての有効な通知サービスにイベント通知を送信する
 
-        if not self.services:
+        Args:
+            event (NotificationEvent): 送信するイベント。
+            thumbnail_path (anyio.Path | None): サムネイル画像のパス（存在する場合）。
+
+        Returns:
+            None
+        """
+
+        # どの通知先もこのイベントを受け取らない場合は、送信処理そのものを開始しない
+        if not self.services or not any(service.isEventEnabled(event.type) for service in self.services):
             return
 
         # 全サービスに並列で送信
+        ## イベントごとの有効・無効は各サービス側で判定する
         tasks = [
-            service.send_new_recording(recorded_program, thumbnail_path)
+            service.send_event(event, thumbnail_path)
             for service in self.services
         ]
 

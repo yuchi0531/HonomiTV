@@ -142,12 +142,20 @@ capture:
 notifications:
     # 通知サービスのリスト（複数設定可能）
     services: [
+        # 通知するイベントの種類 (events) には以下を指定できます。
+        #   RecordingStarted   : 録画開始
+        #   RecordingCompleted : 録画完了 (既定値)
+        #   ReservationAdded   : 録画予約の追加
+        #   ReservationDeleted : 録画予約の削除
+        # events を省略した場合は RecordingCompleted のみが通知されます (従来と同じ挙動)。
+        #
         # Telegram 通知の例
         # {
         #     'type': 'Telegram',
         #     'enabled': false,
         #     'bot_token': '',  # BotFatherから取得したトークン
         #     'chat_id': '',    # 通知先のチャットID
+        #     'events': ['RecordingCompleted', 'RecordingStarted'],  # 通知するイベント
         #     'watch_urls': [   # 視聴ボタンの設定（オプション）
         #         {
         #             'text': '🏠 ローカルで視聴',
@@ -168,6 +176,7 @@ notifications:
         #     'type': 'Webhook',
         #     'enabled': false,
         #     'webhook_url': '',  # Discord / Slack などの Webhook URL
+        #     'events': ['RecordingCompleted', 'ReservationAdded', 'ReservationDeleted'],
         #     'watch_urls': [     # 視聴リンクの設定（オプション）
         #         {
         #             'text': '🏠 ローカルで視聴',

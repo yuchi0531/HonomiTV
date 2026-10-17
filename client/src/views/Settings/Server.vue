@@ -347,6 +347,22 @@
                         </v-select>
                     </div>
 
+                    <div class="settings__item mb-3">
+                        <div class="settings__item-heading">通知するイベント</div>
+                        <div class="settings__item-label">
+                            この通知先へ送るイベントを選択します。複数選択できます。<br>
+                            録画完了のみを選んだ場合、従来と同じ挙動になります。<br>
+                        </div>
+                        <div class="notification-events">
+                            <v-checkbox v-for="event_option in notification_event_options" :key="event_option.value"
+                                color="primary" hide-details density="compact"
+                                :label="event_option.title"
+                                :value="event_option.value"
+                                v-model="service.events">
+                            </v-checkbox>
+                        </div>
+                    </div>
+
                     <template v-if="service.type === 'Telegram'">
                         <div class="settings__item mb-3">
                             <div class="settings__item-heading">Bot Token</div>
@@ -834,9 +850,20 @@ function addNotificationService() {
         bot_token: '',
         chat_id: '',
         webhook_url: '',
-        watch_urls: []
+        watch_urls: [],
+        // 既定は従来と同じく録画完了のみを通知する
+        events: ['RecordingCompleted'],
     });
 }
+
+// 通知できるイベントの一覧
+// サーバー側の NotificationEventType と一致させる
+const notification_event_options = [
+    {title: '録画開始', value: 'RecordingStarted'},
+    {title: '録画完了', value: 'RecordingCompleted'},
+    {title: '録画予約の追加', value: 'ReservationAdded'},
+    {title: '録画予約の削除', value: 'ReservationDeleted'},
+] as const;
 
 // 有効な通知サービスが存在するかを計算
 const hasEnabledNotificationServices = computed(() => {
