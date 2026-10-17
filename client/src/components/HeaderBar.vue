@@ -86,15 +86,22 @@ const isVideoSection = (path: string) => {
 };
 
 const searchPlaceholder = computed(() => {
+    if (route.path.startsWith('/captures')) {
+        return 'キャプチャを番組名・チャンネル名で検索...';
+    }
     if (route.path.startsWith('/series')) {
         return 'シリーズを検索...';
     }
-    return isVideoSection(route.path)
-        ? '録画番組を検索...'
-        : '放送予定の番組を検索...';
+    if (isVideoSection(route.path)) {
+        return '録画番組を検索...';
+    }
+    return '放送予定の番組を検索...';
 });
 
 const getSearchPath = () => {
+    if (route.path.startsWith('/captures')) {
+        return '/captures/search';
+    }
     if (route.path.startsWith('/series')) {
         return '/series/';
     }
@@ -126,7 +133,8 @@ const doSearch = () => {
 
 const showSearchInput = computed(() => {
     const path = route.path;
-    return !path.startsWith('/captures') && !path.startsWith('/settings') && !path.startsWith('/login') && !path.startsWith('/register');
+    // キャプチャギャラリーでも番組名・チャンネル名での検索を許可する
+    return !path.startsWith('/settings') && !path.startsWith('/login') && !path.startsWith('/register');
 });
 
 // 番組表ページかどうか（ヘッダーにコントロールが多くスペースに余裕がないため、PWA インストールボタンを非表示にする）
