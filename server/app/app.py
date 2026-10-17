@@ -24,6 +24,7 @@ from app.metadata.SeriesIndexer import SeriesIndexer
 from app.models.Channel import Channel
 from app.models.Program import Program
 from app.routers import (
+    AnnictRouter,
     BangumiRouter,
     BlueskyRouter,
     CapturesRouter,
@@ -46,6 +47,7 @@ from app.routers import (
     VideoStreamsRouter,
 )
 from app.streams.LiveStream import LiveStream
+from app.utils.AnnictClient import AnnictClient
 from app.utils.BangumiClient import BangumiClient
 from app.utils.BangumiTokenManager import BangumiTokenManager
 from app.utils.edcb.EDCBTuner import EDCBTuner
@@ -92,6 +94,7 @@ app.include_router(CapturesRouter.router)
 app.include_router(DataBroadcastingRouter.router)
 app.include_router(NiconicoRouter.router)
 app.include_router(BangumiRouter.router)
+app.include_router(AnnictRouter.router)
 app.include_router(TwitterRouter.router)
 app.include_router(BlueskyRouter.router)
 app.include_router(UsersRouter.router)
@@ -309,6 +312,8 @@ async def CollectExpiredNetworkTVSessions():
 @repeat_every(seconds=30 * 60, wait_first=10, logger=logging.logger)
 async def UpdateBangumiCollections():
     await BangumiClient.syncAllLinkedUsers()
+    # Annict 連携済みユーザーの作品一覧も同じ間隔で照合する
+    await AnnictClient.syncAllLinkedUsers()
 
 # 視聴や收藏同期の有無に依存せず、失効前に個人トークンを後継へ更新する。
 @app.on_event('startup')

@@ -441,6 +441,8 @@ async def GetSeriesSummaries(
             s.bangumi_subject_name_cn,
             s.bangumi_subject_summary,
             s.bangumi_subject_image_url,
+            s.annict_work_id,
+            s.annict_work_name,
             COALESCE((
                 SELECT JSON_GROUP_ARRAY(recent_recorded_programs.id)
                 FROM (

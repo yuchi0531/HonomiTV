@@ -121,6 +121,7 @@ export interface IRecordedProgram {
     subtitle: string | null;
     bangumi_subject_id: number | null;
     bangumi_episode_id: number | null;
+    annict_episode_id: number | null;
     description: string;
     detail: { [key: string]: string };
     start_time: string;
@@ -155,6 +156,7 @@ export const IRecordedProgramDefault: IRecordedProgram = {
     subtitle: null,
     bangumi_subject_id: null,
     bangumi_episode_id: null,
+    annict_episode_id: null,
     description: '取得中…',
     detail: {},
     start_time: '2000-01-01T00:00:00+09:00',

@@ -35,6 +35,10 @@ class Series(TortoiseModel):
     bangumi_subject_name_cn = cast(TortoiseField[str | None], fields.TextField(null=True))
     bangumi_subject_summary = cast(TortoiseField[str | None], fields.TextField(null=True))
     bangumi_subject_image_url = cast(TortoiseField[str | None], fields.TextField(null=True))
+    # Annict の作品と照合できたアニメだけ、作品情報をローカルへ保持する。
+    ## Bangumi と同時に連携できるよう、別のカラムとして持つ
+    annict_work_id = cast(TortoiseField[int | None], fields.IntField(null=True, unique=True))
+    annict_work_name = cast(TortoiseField[str | None], fields.TextField(null=True))
     aliases: fields.ReverseRelation[SeriesAlias]
     broadcast_periods: fields.ReverseRelation[SeriesBroadcastPeriod]
     created_at = fields.DatetimeField(auto_now_add=True)

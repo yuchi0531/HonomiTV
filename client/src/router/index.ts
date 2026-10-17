@@ -189,6 +189,11 @@ const router = createRouter({
             component: () => import('@/views/Settings/Bangumi.vue'),
         },
         {
+            path: '/settings/annict',
+            name: 'Settings Annict',
+            component: () => import('@/views/Settings/Annict.vue'),
+        },
+        {
             path: '/settings/twitter',
             name: 'Settings Twitter',
             component: () => import('@/views/Settings/Twitter.vue'),

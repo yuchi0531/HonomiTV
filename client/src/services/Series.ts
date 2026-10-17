@@ -15,6 +15,8 @@ export interface ISeries {
     bangumi_subject_name_cn: string | null;
     bangumi_subject_summary: string | null;
     bangumi_subject_image_url: string | null;
+    annict_work_id: number | null;
+    annict_work_name: string | null;
     broadcast_periods: ISeriesBroadcastPeriod[];
     created_at: string;
     updated_at: string;
@@ -75,6 +77,8 @@ export interface ISeriesSummary {
     bangumi_subject_name_cn: string | null;
     bangumi_subject_summary: string | null;
     bangumi_subject_image_url: string | null;
+    annict_work_id: number | null;
+    annict_work_name: string | null;
     recorded_programs_count: number;
     created_at: string;
     updated_at: string;

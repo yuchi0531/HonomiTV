@@ -347,6 +347,7 @@ class RecordedProgram(PydanticModel):
     subtitle: str | None = None  # 番組タイトル解析に成功した場合のみセット
     bangumi_subject_id: int | None = None  # Bangumi 条目との照合に成功した場合のみセット
     bangumi_episode_id: int | None = None  # Bangumi エピソードとの照合に成功した場合のみセット
+    annict_episode_id: int | None = None  # Annict エピソードとの照合に成功した場合のみセット
     description: str = '番組概要を取得できませんでした。'
     detail: dict[str, str] = {}
     start_time: datetime
@@ -390,6 +391,8 @@ class SeriesSummary(PydanticModel):
     bangumi_subject_name_cn: str | None
     bangumi_subject_summary: str | None
     bangumi_subject_image_url: str | None
+    annict_work_id: int | None
+    annict_work_name: str | None
     recorded_programs_count: int
     created_at: datetime
     updated_at: datetime
@@ -438,6 +441,8 @@ class Series(PydanticModel):
     bangumi_subject_name_cn: str | None
     bangumi_subject_summary: str | None
     bangumi_subject_image_url: str | None
+    annict_work_id: int | None
+    annict_work_name: str | None
     broadcast_periods: list[SeriesBroadcastPeriod]
     created_at: datetime
     updated_at: datetime
@@ -465,6 +470,11 @@ class User(PydanticModel):
     bangumi_user_name: str | None
     bangumi_user_nickname: str | None
     bangumi_user_avatar_url: str | None
+    annict_user_id: int | None
+    annict_user_name: str | None
+    annict_user_nickname: str | None
+    annict_user_avatar_url: str | None
+    annict_auto_record_playback: bool
     twitter_accounts: list[TwitterAccount]  # 追加カラム
     bluesky_accounts: list[BlueskyAccount]  # 追加カラム
     account_links: list[AccountLink]  # 追加カラム
@@ -1105,6 +1115,16 @@ class WatchedHistoryUpdate(WatchedHistory):
 
 class BangumiPlaybackProgressResponse(BaseModel):
     status: Literal['Completed', 'AlreadyCompleted', 'Pending', 'NotEligible']
+
+# ***** Annict 連携 *****
+
+class AnnictAuthRequest(BaseModel):
+    # Annict の個人用アクセストークン
+    access_token: Annotated[str, Field(min_length=1, max_length=512)]
+
+class AnnictAutoRecordRequest(BaseModel):
+    # 視聴記録を自動投稿するかどうか
+    enabled: bool
 
 # ***** Twitter 連携 *****
 
