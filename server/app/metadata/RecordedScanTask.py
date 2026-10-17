@@ -108,10 +108,15 @@ class RecordedScanTask:
     RECORDING_MAX_AGE_SECONDS: ClassVar[int] = 300  # 5分
 
     # 録画バックエンドから取得した録画中ファイルパスのキャッシュ有効時間 (秒)
+    ## ファイル変更イベントや一括スキャンで同じ問い合わせが短時間に連続するのを防ぐためのもの。
+    ## 同期間隔より十分短くしないと、定期同期が毎回キャッシュに当たってバックエンドへ問い合わせが行かれない。
     ACTIVE_RECORDING_PATHS_CACHE_SECONDS: ClassVar[int] = 5
 
     # 録画バックエンドが把握している録画状態を同期する間隔 (秒)
-    ACTIVE_RECORDING_SYNC_INTERVAL_SECONDS: ClassVar[int] = 5
+    ## 録画完了の検出が遅れても、フォルダ監視 (RECORDING_COMPLETE_SECONDS) が別経路で拾うため、
+    ## バックエンドへの問い合わせ頻度を抑える目的で長めに取る。
+    ## 5 秒間隔では 1 日あたり 17,280 回問い合わせることになり、UI の更新間隔に対して過剰だった。
+    ACTIVE_RECORDING_SYNC_INTERVAL_SECONDS: ClassVar[int] = 30
 
     # EPGStation が把握している直近の録画済み一覧を同期する間隔 (秒)
     EPGSTATION_RECENT_RECORDED_SYNC_INTERVAL_SECONDS: ClassVar[int] = 60

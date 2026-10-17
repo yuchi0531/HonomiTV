@@ -10,7 +10,9 @@ from tortoise import connections
 from app import logging, schemas
 from app.constants import JST
 from app.metadata.SeriesIndexer import NormalizeSeriesTitle, ParseSeriesTitle
+from app.models.RecordedProgram import RecordedProgram
 from app.models.Series import Series
+from app.models.SeriesBroadcastPeriod import SeriesBroadcastPeriod
 from app.utils import ParseDatetimeStringToJST
 
 
@@ -648,13 +650,7 @@ async def SeriesAPI(
     指定されたシリーズ番組を取得する。
     """
 
-    series = await Series.all() \
-        .select_related('broadcast_periods') \
-        .select_related('broadcast_periods__channel') \
-        .select_related('broadcast_periods__recorded_programs') \
-        .select_related('broadcast_periods__recorded_programs__recorded_video') \
-        .select_related('broadcast_periods__recorded_programs__channel') \
-        .get_or_none(id=series_id)
+    series = await Series.get_or_none(id=series_id)
     if series is None:
         logging.warning(f'[SeriesRouter][SeriesAPI] Specified series_id was not found. [series_id: {series_id}]')
         raise HTTPException(
@@ -662,4 +658,41 @@ async def SeriesAPI(
             detail = 'Specified series_id was not found',
         )
 
-    return series
+    # broadcast_periods は 1 対多の逆参照なので、select_related では単一オブジェクトとして
+    ## 解決されてしまい、list を要求するスキーマと一致しない。明示的に問い合わせる。
+    broadcast_periods: list[schemas.SeriesBroadcastPeriod] = []
+    for broadcast_period in await SeriesBroadcastPeriod.filter(series_id=series.id).order_by('start_date', 'id'):
+        # channel は順方向の外部キーなので select_related で一度に取得する
+        ## (逆参照と違い、こちらは単一オブジェクトとして正しく解決される)
+        broadcast_period_with_channel = await SeriesBroadcastPeriod.get(id=broadcast_period.id).select_related('channel')
+        # recorded_programs は逆参照なので、フォルダ内の録画だけを明示的に取得する
+        ## recorded_video と channel は順方向の外部キーなので select_related でまとめて取得する
+        recorded_programs = await RecordedProgram.filter(
+            series_broadcast_period_id = broadcast_period.id,
+        ).select_related('recorded_video').select_related('channel')
+        broadcast_periods.append(schemas.SeriesBroadcastPeriod(
+            channel = schemas.Channel.model_validate(broadcast_period_with_channel.channel, from_attributes=True),
+            start_date = broadcast_period.start_date,
+            end_date = broadcast_period.end_date,
+            recorded_programs = [
+                schemas.RecordedProgram.model_validate(recorded_program, from_attributes=True)
+                for recorded_program in recorded_programs
+            ],
+        ))
+
+    return schemas.Series(
+        id = series.id,
+        title = series.title,
+        description = series.description,
+        genres = series.genres,
+        bangumi_subject_id = series.bangumi_subject_id,
+        bangumi_subject_name = series.bangumi_subject_name,
+        bangumi_subject_name_cn = series.bangumi_subject_name_cn,
+        bangumi_subject_summary = series.bangumi_subject_summary,
+        bangumi_subject_image_url = series.bangumi_subject_image_url,
+        annict_work_id = series.annict_work_id,
+        annict_work_name = series.annict_work_name,
+        broadcast_periods = broadcast_periods,
+        created_at = series.created_at,
+        updated_at = series.updated_at,
+    )
