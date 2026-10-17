@@ -211,8 +211,11 @@ const useChannelsStore = defineStore('channels', {
             channels_list_with_pinned.set('地デジ', []);
 
             // 初回のチャンネル情報更新がまだ実行されていない or 実行中のときは最低限の上記2つだけで返す
+            // ネットテレビは設定されている場合のみ、取得中でもタブの存在を示すために追加する
             if (this.is_channels_list_initial_updated === false && this.is_iptv_initial_updated === false) {
-                channels_list_with_pinned.set('ネット', []);
+                if (this.is_iptv_loading === true || this.source_errors.IPTV !== null) {
+                    channels_list_with_pinned.set('ネット', []);
+                }
                 return channels_list_with_pinned;
             }
 
@@ -315,7 +318,13 @@ const useChannelsStore = defineStore('channels', {
                 if (channel_type === 'ピン留め') {
                     continue;
                 }
-                if (channels.length === 0 && channel_type !== 'ネット') {
+                if (channels.length === 0) {
+                    // ネットテレビだけは、設定されているが一時的に取得できなかった場合にタブを残す。
+                    // IPTV を一切設定していない場合は source_errors.IPTV が null のままなので、
+                    // 空のタブを出さずに削除する (設定していない機能のタブを見せない)。
+                    if (channel_type === 'ネット' && this.source_errors.IPTV !== null) {
+                        continue;
+                    }
                     channels_list_with_pinned.delete(channel_type);
                 }
             }
