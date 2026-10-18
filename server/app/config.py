@@ -77,6 +77,9 @@ class ClientSettings(BaseModel):
         '福祉': 'White',
         'その他': 'White',
     }
+    # 録画番組一覧で「一部のみ録画」のバッジを表示するかどうか
+    ## 既定は有効 (従来どおり、一部のみ録画の番組にはバッジを出す)
+    show_partially_recorded_badge: bool = True
     show_player_background_image: bool = True
     use_pure_black_player_background: bool = False
     tv_channel_sort_by_jikkyo_force: bool = False

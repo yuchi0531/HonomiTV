@@ -43,6 +43,8 @@ export interface IClientSettings {
     timetable_hover_expand: boolean;
     timetable_dim_shopping_programs: boolean;
     timetable_genre_colors: ITimeTableGenreColors;
+    /** 録画番組一覧で「一部のみ録画」のバッジを表示するかどうか */
+    show_partially_recorded_badge: boolean;
     show_player_background_image: boolean;
     use_pure_black_player_background: boolean;
     tv_channel_sort_by_jikkyo_force: boolean;

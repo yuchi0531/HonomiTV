@@ -166,6 +166,7 @@ import { collapseBatchEpisodeColumns } from '@/components/Series/SeriesEpisodeMa
 import RecordedProgramMenu from '@/components/Videos/RecordedProgramMenu.vue';
 import { IRecordedProgram } from '@/services/Videos';
 import Videos from '@/services/Videos';
+import useSettingsStore from '@/stores/SettingsStore';
 import Utils, { dayjs } from '@/utils';
 
 const props = defineProps<{
@@ -183,6 +184,7 @@ const emit = defineEmits<{
     (e: 'heightChanged', height: number): void;
 }>();
 const router = useRouter();
+const settingsStore = useSettingsStore();
 
 interface IEpisodeSlot {
     key: string;
@@ -519,6 +521,8 @@ const completeEpisodeSlotKeys = computed(() => new Set(
 ));
 
 const shouldShowPartialRecordingWarning = (program: IRecordedProgram): boolean => {
+    // バッジの表示がオフの場合は、シリーズのエピソード一覧でも同じく出さない
+    if (settingsStore.settings.show_partially_recorded_badge === false) return false;
     if (program.is_partially_recorded === false) return false;
     const episodeSlots = getEpisodeSlots(program).filter(slot => slot.key.startsWith('episode:'));
     if (episodeSlots.length === 0) return true;

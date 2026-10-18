@@ -119,6 +119,19 @@
                     v-model="settingsStore.settings.show_original_broadcast_time_during_playback">
                 </v-switch>
             </div>
+            <div class="settings__item settings__item--switch">
+                <label class="settings__item-heading" for="show_partially_recorded_badge">「一部のみ録画」のバッジを表示する</label>
+                <label class="settings__item-label" for="show_partially_recorded_badge">
+                    オンにすると、録画時間が番組の放送時間より短い録画番組に「⚠️ 一部のみ録画」のバッジを表示します。デフォルトはオンです。<br>
+                </label>
+                <label class="settings__item-label" for="show_partially_recorded_badge">
+                    録画後に前後の CM をカットする運用では、すべての番組が放送時間より短くなるためバッジが常に表示されます。その場合はこの設定をオフにすると一覧が見やすくなります。<br>
+                    バッジを消しても録画番組自体は一覧に残り、再生もできます。<br>
+                </label>
+                <v-switch class="settings__item-switch" color="primary" id="show_partially_recorded_badge" hide-details
+                    v-model="settingsStore.settings.show_partially_recorded_badge">
+                </v-switch>
+            </div>
             <div class="settings__item">
                 <div class="settings__item-heading">録画番組の再生開始位置</div>
                 <div class="settings__item-label">

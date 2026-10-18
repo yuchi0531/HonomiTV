@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { createPinia } from 'pinia';
 import { describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
@@ -22,7 +23,7 @@ describe('放送中詳細の話数スクロール', () => {
             seriesId: 1, title: '作品', description: '', bangumiSubjectId: null,
             bangumiSubjectName: null, bangumiSubjectNameCn: null,
             bangumiSubjectSummary: null, bangumiSubjectImageUrl: null, initialScrollToLatest: true,
-        }, global: {plugins: [router], stubs: {'v-skeleton-loader': true}}});
+        }, global: {plugins: [router, createPinia()], stubs: {'v-skeleton-loader': true}}});
         await flushPromises();
         const scroller = wrapper.get('.series-episode-list__matrix-scroll').element;
         expect(scroller.scrollLeft).toBe(1800);

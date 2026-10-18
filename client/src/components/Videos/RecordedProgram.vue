@@ -29,7 +29,8 @@
                     <Icon icon="fluent:error-circle-12-regular" width="15px" height="15px" />
                     メタデータ解析失敗
                 </div>
-                <div v-else-if="program.is_partially_recorded" class="recorded-program__thumbnail-status recorded-program__thumbnail-status--partial">
+                <div v-else-if="program.is_partially_recorded && settingsStore.settings.show_partially_recorded_badge"
+                    class="recorded-program__thumbnail-status recorded-program__thumbnail-status--partial">
                     ⚠️ 一部のみ録画
                 </div>
                 <div v-if="watchHistory" class="recorded-program__thumbnail-progress">

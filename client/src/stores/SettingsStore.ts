@@ -76,6 +76,8 @@ export interface ILocalClientSettings extends IClientSettings {
     timetable_hover_expand: boolean;
     timetable_dim_shopping_programs: boolean;
     timetable_genre_colors: ITimeTableGenreColors;
+    /** 録画番組一覧で「一部のみ録画」のバッジを表示するかどうか */
+    show_partially_recorded_badge: boolean;
     show_player_background_image: boolean;
     use_pure_black_player_background: boolean;
     tv_channel_sort_by_jikkyo_force: boolean;
@@ -228,6 +230,7 @@ export const ILocalClientSettingsDefault: ILocalClientSettings = {
     // ***** 設定 → 全般 *****
 
     // プレイヤーの読み込み中に背景写真を表示する (Default: オン)
+    show_partially_recorded_badge: true,
     show_player_background_image: true,
     // プレイヤー表示領域の背景色を完全な黒にする (Default: オフ)
     use_pure_black_player_background: false,
@@ -406,6 +409,7 @@ export const SYNCABLE_SETTINGS_KEYS: (keyof IClientSettings)[] = [
     'timetable_hover_expand',
     'timetable_dim_shopping_programs',
     'timetable_genre_colors',
+    'show_partially_recorded_badge',
     'show_player_background_image',
     'use_pure_black_player_background',
     'tv_channel_sort_by_jikkyo_force',
