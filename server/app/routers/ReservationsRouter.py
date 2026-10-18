@@ -516,12 +516,57 @@ def DecodeEDCBRecSettingData(rec_settings_data: RecSettingDataRequired) -> schem
     )
 
 
-def EncodeEDCBRecSettingData(record_settings: schemas.RecordSettings) -> RecSettingDataRequired:
+async def GetEDCBDefaultBatFilePath(edcb: CtrlCmdUtil) -> str:
+    """
+    EDCB の EpgTimerSrv.ini から録画後に実行する bat ファイルのデフォルトパスを取得する
+
+    KonomiTV が予約を作成する際に bat_file_path を空文字で送ると、EDCB の
+    [REC_DEF] BatFilePath 設定が空で上書きされてしまい、録画後の自動処理が動かなくなる。
+    明示的な指定が無い場合はこのデフォルト値を送ることで、EDCB 側の設定を尊重する。
+
+    Args:
+        edcb (CtrlCmdUtil): EDCB の API クライアント
+
+    Returns:
+        str: デフォルトの bat ファイルパス。取得できない場合は空文字列。
+    """
+
+    try:
+        # EDCB から EpgTimerSrv.ini を取得する
+        files = await edcb.sendFileCopy2(['EpgTimerSrv.ini'])
+        if files is None or len(files) == 0:
+            logging.warning('[ReservationsRouter][GetEDCBDefaultBatFilePath] Failed to get EpgTimerSrv.ini.')
+            return ''
+        ini_data = files[0]['data']
+        if not ini_data:
+            logging.warning('[ReservationsRouter][GetEDCBDefaultBatFilePath] EpgTimerSrv.ini is empty.')
+            return ''
+
+        # EDCB 由来の ini を重複キーを許容して解析する
+        ini_text = EDCBUtil.convertBytesToString(ini_data)
+        config = EDCBUtil.parseEDCBIni(ini_text, is_preserve_case=True)
+
+        # デフォルトの録画設定プリセットは [REC_DEF] セクション
+        ## 存在しない場合は bat 実行が設定されていないものとして扱う
+        if 'REC_DEF' not in config:
+            return ''
+        return config['REC_DEF'].get('BatFilePath', '').strip()
+    except Exception as ex:
+        # デフォルト値が取れなくても予約自体は作成できるため、例外は握りつぶす
+        logging.warning(f'[ReservationsRouter][GetEDCBDefaultBatFilePath] Failed to get default bat file path: {ex}')
+        return ''
+
+
+async def EncodeEDCBRecSettingData(
+    record_settings: schemas.RecordSettings,
+    edcb: CtrlCmdUtil,
+) -> RecSettingDataRequired:
     """
     schemas.RecordSettings オブジェクトを EDCB の RecSettingData オブジェクトに変換する
 
     Args:
         record_settings (schemas.RecordSettings): schemas.RecordSettings オブジェクト
+        edcb (CtrlCmdUtil): EDCB の API クライアント (デフォルト bat パスの取得に使う)
 
     Returns:
         RecSettingData: EDCB の RecSettingData オブジェクト
@@ -577,9 +622,13 @@ def EncodeEDCBRecSettingData(record_settings: schemas.RecordSettings) -> RecSett
     pittari_flag: bool = record_settings.is_exact_recording_enabled
 
     # 録画後に実行する bat ファイルのパス
+    ## 空文字を送ると EDCB の [REC_DEF] BatFilePath 設定が上書きされてしまうため、
+    ## 明示的な指定が無い場合は EDCB 側のデフォルト値をそのまま引き継ぐ
     bat_file_path: str = ''
     if record_settings.post_recording_bat_file_path is not None:
         bat_file_path = record_settings.post_recording_bat_file_path
+    else:
+        bat_file_path = await GetEDCBDefaultBatFilePath(edcb)
 
     # 保存先の録画フォルダのパスのリスト
     ## 空リストのときはデフォルトの録画フォルダに保存されるため問題ない
@@ -1306,7 +1355,10 @@ async def AddReservationAPI(
         'sid': channel.service_id,
         'eid': event_id,
         'comment': '',  # 単発予約の場合は空文字列で問題ないはず
-        'rec_setting': cast(RecSettingData, EncodeEDCBRecSettingData(reserve_add_request.record_settings)),
+        'rec_setting': cast(RecSettingData, await EncodeEDCBRecSettingData(
+            reserve_add_request.record_settings,
+            edcb,
+        )),
     }
 
     # EDCB に録画予約を追加するように指示
@@ -1424,7 +1476,10 @@ async def UpdateReservationAPI(
 
     # 現在の録画予約の ReserveData に新しい録画設定を上書きマージする形で EDCB に送信する
     ## 一見省略しても良さそうな録画予約対象のチャンネル情報や番組情報なども省略せずに全て含める必要がある (さもないと録画予約情報が破壊される…)
-    reserve_data['rec_setting'] = EncodeEDCBRecSettingData(reserve_update_request.record_settings)
+    reserve_data['rec_setting'] = await EncodeEDCBRecSettingData(
+        reserve_update_request.record_settings,
+        edcb,
+    )
 
     # EDCB に指定された録画予約を更新するように指示
     result = await edcb.sendChgReserve([cast(ReserveData, reserve_data)])
