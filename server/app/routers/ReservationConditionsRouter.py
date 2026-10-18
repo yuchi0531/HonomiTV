@@ -558,7 +558,10 @@ async def RegisterReservationConditionAPI(
             edcb,
             chset5_services,
         )),
-        'rec_setting': cast(RecSettingData, EncodeEDCBRecSettingData(reserve_condition_add_request.record_settings)),
+        'rec_setting': cast(RecSettingData, await EncodeEDCBRecSettingData(
+            reserve_condition_add_request.record_settings,
+            edcb,
+        )),
     }
 
     # EDCB にキーワード自動予約条件を登録するように指示
@@ -615,7 +618,10 @@ async def UpdateReservationConditionAPI(
         edcb,
         chset5_services,
     )
-    auto_add_data['rec_setting'] = EncodeEDCBRecSettingData(reserve_condition_update_request.record_settings)
+    auto_add_data['rec_setting'] = await EncodeEDCBRecSettingData(
+        reserve_condition_update_request.record_settings,
+        edcb,
+    )
 
     # EDCB に指定されたキーワード自動予約条件を更新するように指示
     result = await edcb.sendChgAutoAdd([cast(AutoAddData, auto_add_data)])
