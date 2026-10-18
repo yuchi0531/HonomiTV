@@ -18,6 +18,7 @@ from app.utils.NotificationService import (
     TelegramNotificationService,
     WebhookNotificationService,
 )
+from app.utils.RecordingQuality import RecordingQuality
 
 
 def BuildRecordedProgram(**overrides: Any) -> RecordedProgram:
@@ -461,6 +462,67 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
         for title in titles:
             self.assertNotIn('検出', title)
 
+    async def test_includes_recording_quality_in_webhook_field(self) -> None:
+        """録画品質が渡された場合は Embed のフィールドに D / E / S を載せる。"""
+
+        service = WebhookNotificationService(self._config(events=['RecordingCompleted']))
+
+        await service.send_event(NotificationEvent(
+            'RecordingCompleted',
+            recorded_program = BuildRecordedProgram(),
+            recording_quality = RecordingQuality(drops=12, scrambles=3, error_info=''),
+        ))
+
+        embed = RecordingHTTPClient.requests[0]['json']['embeds'][0]
+        fields = {field['name']: field['value'] for field in embed['fields']}
+        # D / E / S の順に、記号と数値だけで並べる
+        self.assertEqual(fields['D / E / S'], 'D 12 / E 0 / S 3')
+        # 番組情報のフィールドは維持されている
+        self.assertIn('チャンネル', fields)
+        self.assertIn('長さ', fields)
+
+    async def test_reports_clean_quality_explicitly(self) -> None:
+        """問題が無い場合も「問題なし」と明示し、欠損と区別できるようにする。"""
+
+        service = WebhookNotificationService(self._config(events=['RecordingCompleted']))
+
+        await service.send_event(NotificationEvent(
+            'RecordingCompleted',
+            recorded_program = BuildRecordedProgram(),
+            recording_quality = RecordingQuality(drops=0, scrambles=0, error_info=''),
+        ))
+
+        embed = RecordingHTTPClient.requests[0]['json']['embeds'][0]
+        fields = {field['name']: field['value'] for field in embed['fields']}
+        # 問題が無い場合も同じ書式で 0 を並べる
+        self.assertEqual(fields['D / E / S'], 'D 0 / E 0 / S 0')
+
+    async def test_omits_quality_field_when_unavailable(self) -> None:
+        """品質情報が取得できない場合はフィールド自体を出さない。"""
+
+        service = WebhookNotificationService(self._config(events=['RecordingCompleted']))
+
+        await service.send_event(NotificationEvent('RecordingCompleted', recorded_program=BuildRecordedProgram()))
+
+        embed = RecordingHTTPClient.requests[0]['json']['embeds'][0]
+        field_names = {field['name'] for field in embed['fields']}
+        self.assertNotIn('D / E / S', field_names)
+
+    async def test_quality_field_is_truncated_to_discord_limit(self) -> None:
+        """エラー情報が長くても Embed のフィールド上限を超えない。"""
+
+        service = WebhookNotificationService(self._config(events=['RecordingCompleted']))
+
+        await service.send_event(NotificationEvent(
+            'RecordingCompleted',
+            recorded_program = BuildRecordedProgram(),
+            recording_quality = RecordingQuality(drops=1, scrambles=0, error_info='え' * 5000),
+        ))
+
+        embed = RecordingHTTPClient.requests[0]['json']['embeds'][0]
+        quality_value = next(field['value'] for field in embed['fields'] if field['name'] == 'D / E / S')
+        # Discord のフィールド上限 (1024 文字) を超えない
+        self.assertLessEqual(len(quality_value), 1024)
     async def test_sends_reservation_added_event(self) -> None:
         """予約追加イベントは予約 ID と番組情報を Embed に含める。"""
 

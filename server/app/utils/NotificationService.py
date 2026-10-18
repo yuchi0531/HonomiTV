@@ -10,6 +10,7 @@ import httpx
 
 from app import logging, schemas
 from app.config import NotificationEventType, ServerSettingsNotificationService
+from app.utils.RecordingQuality import RecordingQuality
 
 
 class NotificationEvent:
@@ -26,12 +27,15 @@ class NotificationEvent:
     recorded_program: schemas.RecordedProgram | None
     # 予約イベントの対象 (録画イベントでは None)
     reservation: schemas.Reservation | None
+    # 録画品質の統計 (EDCB からのみ取得できる。取得できない場合は None)
+    recording_quality: RecordingQuality | None
 
     def __init__(
         self,
         type: NotificationEventType,
         recorded_program: schemas.RecordedProgram | None = None,
         reservation: schemas.Reservation | None = None,
+        recording_quality: RecordingQuality | None = None,
     ):
         """
         通知イベントを初期化する。
@@ -40,11 +44,30 @@ class NotificationEvent:
             type (NotificationEventType): イベントの種類。
             recorded_program (schemas.RecordedProgram | None): 録画イベントの対象。
             reservation (schemas.Reservation | None): 予約イベントの対象。
+            recording_quality (RecordingQuality | None): 録画品質の統計。
         """
 
         self.type = type
         self.recorded_program = recorded_program
         self.reservation = reservation
+        self.recording_quality = recording_quality
+
+    def GetQualitySummary(self) -> str | None:
+        """
+        録画品質を 1 行の要約文字列にする。
+
+        通知先ごとに書式が異なるため、本文へ埋め込むための共通表現をここで組み立てる。
+        D / E / S はそれぞれドロップ数 / エラー数 / スクランブル数を表す。
+
+        Returns:
+            str | None: 品質の要約。品質情報が無い場合は None。
+        """
+
+        if self.recording_quality is None:
+            return None
+        quality = self.recording_quality
+        # D / E / S を並べれば状態が一目で分かるため、問題の有無にかかわらず同じ書式で出す
+        return f'📊録画品質 D {quality.drops} / E {quality.error_count} / S {quality.scrambles}'
 
 
 class NotificationService(ABC):
@@ -146,6 +169,7 @@ class TelegramNotificationService(NotificationService):
 
         if event.type == 'RecordingStarted':
             assert event.recorded_program is not None
+            # 録画開始時点では品質統計がまだ無いため、品質行は付けない
             return self._build_recording_message(
                 event.recorded_program,
                 heading = '🔴 **録画を開始しました**',
@@ -156,6 +180,7 @@ class TelegramNotificationService(NotificationService):
             return self._build_recording_message(
                 event.recorded_program,
                 heading = '✅ **録画が完了しました**',
+                quality_summary = event.GetQualitySummary(),
             )
         assert event.reservation is not None
         if event.type == 'ReservationAdded':
@@ -228,13 +253,19 @@ class TelegramNotificationService(NotificationService):
             logging.warning(f'Telegram テスト通知の送信に失敗しました: {ex}')
             raise
 
-    def _build_recording_message(self, recorded_program: schemas.RecordedProgram, heading: str) -> str:
+    def _build_recording_message(
+        self,
+        recorded_program: schemas.RecordedProgram,
+        heading: str,
+        quality_summary: str | None = None,
+    ) -> str:
         """
         録画番組情報からメッセージテキストを構築する
 
         Args:
             recorded_program (schemas.RecordedProgram): 録画番組情報。
             heading (str): 先頭に付ける見出し。
+            quality_summary (str | None): 録画品質の要約。品質情報が無い場合は None。
 
         Returns:
             str: Telegram へ送る本文。
@@ -252,6 +283,10 @@ class TelegramNotificationService(NotificationService):
         if len(description) > 200:
             description = description[:200] + '...'
 
+        # 録画品質は取得できた場合のみ、番組情報の直後に 1 行で添える
+        ## 要約自体が「📊録画品質 D / E / S」の形なので、ここで見出しを重ねない
+        quality_line = f'\n{quality_summary}\n' if quality_summary is not None else ''
+
         # メッセージを構築
         message = f"""{heading}
 
@@ -260,7 +295,7 @@ class TelegramNotificationService(NotificationService):
 チャンネル：{channel_name}
 放送時間：{recorded_program.start_time.strftime('%Y/%m/%d %H:%M')} - {recorded_program.end_time.strftime('%H:%M')}
 長さ：{duration_str}
-
+{quality_line}
 📝 **番組概要**
 {description}"""
 
@@ -451,7 +486,11 @@ class WebhookNotificationService(NotificationService):
 
         # 録画イベントは録画番組、予約イベントは予約情報からフィールドを組み立てる
         if event.recorded_program is not None:
-            return self._build_recording_payload(event.recorded_program, title)
+            return self._build_recording_payload(
+                event.recorded_program,
+                title,
+                quality_summary = event.GetQualitySummary(),
+            )
         assert event.reservation is not None
         return self._build_reservation_payload(event.reservation, title)
 
@@ -518,6 +557,7 @@ class WebhookNotificationService(NotificationService):
         self,
         recorded_program: schemas.RecordedProgram,
         title: str,
+        quality_summary: str | None = None,
     ) -> dict[str, Any]:
         """
         録画番組情報から Webhook へ POST する JSON を構築する
@@ -529,6 +569,7 @@ class WebhookNotificationService(NotificationService):
         Args:
             recorded_program (schemas.RecordedProgram): 録画番組情報。
             title (str): Embed の見出し。
+            quality_summary (str | None): 録画品質の要約。品質情報が無い場合は None。
 
         Returns:
             dict[str, Any]: Webhook へ送信する JSON ペイロード。
@@ -555,6 +596,18 @@ class WebhookNotificationService(NotificationService):
             ), 'inline': True},
             {'name': '長さ', 'value': self._format_duration(recorded_program), 'inline': True},
         ]
+        # 録画品質は取得できた場合のみフィールドとして添える
+        ## 品質は番組情報より補足的なので、チャンネル・放送時間・長さの後ろに置く
+        ## 要約には「📊録画品質」が含まれるため、フィールド名は D/E/S の内訳だけにする
+        if quality_summary is not None:
+            fields.append({
+                'name': 'D / E / S',
+                'value': self._truncate(
+                    quality_summary.removeprefix('📊録画品質 '),
+                    self.EMBED_FIELD_VALUE_MAX_LENGTH,
+                ),
+                'inline': False,
+            })
         # 視聴リンクは設定されている場合のみフィールドとして並べる
         ## フィールド数の上限を超えると Embed 全体が拒否されるため、残り枠だけに収める
         fields.extend(self._build_watch_links(recorded_program)[:self.EMBED_FIELD_MAX_COUNT - len(fields)])

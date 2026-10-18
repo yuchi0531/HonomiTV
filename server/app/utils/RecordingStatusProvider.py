@@ -148,6 +148,25 @@ def _ExpandRecordingPathCandidatesSet(paths: set[str], config: ServerSettings) -
     return expanded_paths
 
 
+def AreRecordingPathsEquivalent(first_path: str, second_path: str, config: ServerSettings) -> bool:
+    """
+    バックエンドが返した 2 つのパス文字列が同じ録画ファイルを指すかを判定する。
+
+    EDCB は Windows のドライブレター付きパスや別ホスト基準のパスを返すことがあるため、
+    KonomiTV 側の録画フォルダを基準に候補へ展開してから比較する。
+
+    Args:
+        first_path (str): 比較するパス文字列。
+        second_path (str): 比較するパス文字列。
+        config (ServerSettings): サーバー設定。
+
+    Returns:
+        bool: 同じ録画ファイルを指す可能性がある場合は True。
+    """
+
+    return _ExpandRecordingPathCandidates(first_path, config) & _ExpandRecordingPathCandidates(second_path, config) != set()
+
+
 def IsActiveRecordingFilePath(file_path: str, active_recording_paths: set[str]) -> bool:
     """
     指定されたファイルパスが録画バックエンドの録画中ファイル一覧に含まれているかを判定する。

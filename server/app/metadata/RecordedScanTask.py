@@ -34,6 +34,7 @@ from app.utils import (
 from app.utils.DriveIOLimiter import DriveIOLimiter
 from app.utils.NotificationService import NotificationEvent, NotificationManager
 from app.utils.ProcessLimiter import ProcessLimiter
+from app.utils.RecordingQuality import GetEDCBRecordingQuality
 from app.utils.RecordingStatusProvider import (
     ActiveRecordingFilePaths,
     GetActiveRecordingFilePaths,
@@ -1674,8 +1675,22 @@ class RecordedScanTask:
             # サムネイルパスを取得
             thumbnail_path = anyio.Path(str(THUMBNAILS_DIR)) / f'{recorded_program.recorded_video.file_hash}.webp'
 
+            # 録画品質 (D/E/S) は EDCB からしか取得できないため、録画完了時のみ取得を試みる
+            ## 録画開始時点では EDCB 側に録画済み情報がまだ無い
+            ## 取得できなくても通知自体は送る (他バックエンドでは常に None になる)
+            recording_quality = None
+            if event_type == 'RecordingCompleted':
+                recording_quality = await GetEDCBRecordingQuality(
+                    recorded_program.recorded_video.file_path,
+                    self.config,
+                )
+
             await notification_manager.send_event(
-                event = NotificationEvent(event_type, recorded_program = notification_recorded_program),
+                event = NotificationEvent(
+                    event_type,
+                    recorded_program = notification_recorded_program,
+                    recording_quality = recording_quality,
+                ),
                 thumbnail_path = thumbnail_path if await thumbnail_path.exists() else None,
             )
         except Exception as e:
