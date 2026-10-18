@@ -80,6 +80,9 @@ class ClientSettings(BaseModel):
     show_player_background_image: bool = True
     use_pure_black_player_background: bool = False
     tv_channel_sort_by_jikkyo_force: bool = False
+    # ピン留め中のチャンネルが無いときに、チャンネル一覧のピン留めタブを隠すかどうか
+    ## 既定は有効 (従来どおり、ピン留めが無ければタブを出さない)
+    tv_hide_pinned_tab_when_empty: bool = True
     tv_channel_up_down_buttons_reverse: bool = False
     tv_channel_selection_requires_alt_key: bool = False
     use_28hour_clock: bool = False

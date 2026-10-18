@@ -46,6 +46,8 @@ export interface IClientSettings {
     show_player_background_image: boolean;
     use_pure_black_player_background: boolean;
     tv_channel_sort_by_jikkyo_force: boolean;
+    /** ピン留め中のチャンネルが無いときに、チャンネル一覧のピン留めタブを隠すかどうか */
+    tv_hide_pinned_tab_when_empty: boolean;
     tv_channel_up_down_buttons_reverse: boolean;
     tv_channel_selection_requires_alt_key: boolean;
     use_28hour_clock: boolean;

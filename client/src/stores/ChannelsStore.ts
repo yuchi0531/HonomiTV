@@ -216,6 +216,13 @@ const useChannelsStore = defineStore('channels', {
                 if (this.is_iptv_loading === true || this.source_errors.IPTV !== null) {
                     channels_list_with_pinned.set('ネット', []);
                 }
+                // ピン留め中のチャンネルが無ければ、取得中でもピン留めタブは出さない
+                // 設定は端末に保存されているため、チャンネル情報の取得を待たずに判定できる
+                const settings_store = useSettingsStore();
+                if (settings_store.settings.tv_hide_pinned_tab_when_empty === true &&
+                    settings_store.settings.pinned_channel_ids.length === 0) {
+                    channels_list_with_pinned.delete('ピン留め');
+                }
                 return channels_list_with_pinned;
             }
 
@@ -313,11 +320,11 @@ const useChannelsStore = defineStore('channels', {
                 }
             }
 
-            // 最後に、チャンネルが1つもないチャンネルタイプのタブを除外する (ピン留めタブを除く)
+            // ピン留めタブの表示可否は設定で切り替えられる
+            const settings_store_for_pinned = useSettingsStore();
+
+            // 最後に、チャンネルが1つもないチャンネルタイプのタブを除外する (ピン留めタブを含む)
             for (const [channel_type, channels] of channels_list_with_pinned) {
-                if (channel_type === 'ピン留め') {
-                    continue;
-                }
                 if (channels.length === 0) {
                     // ネットテレビだけは、設定されているが一時的に取得できなかった場合にタブを残す。
                     // IPTV を一切設定していない場合は source_errors.IPTV が null のままなので、
@@ -325,13 +332,16 @@ const useChannelsStore = defineStore('channels', {
                     if (channel_type === 'ネット' && this.source_errors.IPTV !== null) {
                         continue;
                     }
+                    // ピン留めタブは、設定が有効ならピン留め中のチャンネルが無いときに表示しない。
+                    // 他のタブが残っているかどうかとは無関係に判定する
+                    // (以前は他タブが全て空のときだけ削除していたため、ピン留めが無くても
+                    //  地デジなどが残っていると空のピン留めタブが出ていた)
+                    // 設定が無効な場合は、後からチャンネルをピン留めする導線としてタブを残す。
+                    if (channel_type === 'ピン留め' && settings_store_for_pinned.settings.tv_hide_pinned_tab_when_empty === false) {
+                        continue;
+                    }
                     channels_list_with_pinned.delete(channel_type);
                 }
-            }
-
-            // ただし、this.channels_list_with_pinned 全体が空でもうピン留めタブしか残っていない場合は、ピン留めタブも削除する
-            if (channels_list_with_pinned.size === 1 && channels_list_with_pinned.has('ピン留め')) {
-                channels_list_with_pinned.delete('ピン留め');
             }
 
             return channels_list_with_pinned;
@@ -353,7 +363,9 @@ const useChannelsStore = defineStore('channels', {
             }
 
             // ピン留め中チャンネルが1つもない場合は、ピン留めタブを削除する
-            if (channels_list_with_pinned.get('ピン留め')?.length === 0) {
+            // 設定が無効な場合は、ホーム側と同じくタブを残す
+            if (useSettingsStore().settings.tv_hide_pinned_tab_when_empty === true &&
+                channels_list_with_pinned.get('ピン留め')?.length === 0) {
                 channels_list_with_pinned.delete('ピン留め');
             }
 

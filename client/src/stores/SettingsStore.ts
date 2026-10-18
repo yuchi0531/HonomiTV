@@ -79,6 +79,8 @@ export interface ILocalClientSettings extends IClientSettings {
     show_player_background_image: boolean;
     use_pure_black_player_background: boolean;
     tv_channel_sort_by_jikkyo_force: boolean;
+    /** ピン留め中のチャンネルが無いときに、チャンネル一覧のピン留めタブを隠すかどうか */
+    tv_hide_pinned_tab_when_empty: boolean;
     tv_channel_up_down_buttons_reverse: boolean;
     tv_channel_selection_requires_alt_key: boolean;
     use_28hour_clock: boolean;
@@ -231,6 +233,7 @@ export const ILocalClientSettingsDefault: ILocalClientSettings = {
     use_pure_black_player_background: false,
     // チャンネル一覧を実況勢いが強い順に並び替える (Default: オフ)
     tv_channel_sort_by_jikkyo_force: false,
+    tv_hide_pinned_tab_when_empty: true,
     // チャンネル切り替えボタンとショートカットキーの上下方向をテレビリモコン準拠にする (Default: オフ)
     tv_channel_up_down_buttons_reverse: false,
     // チャンネル選局のキーボードショートカットを Alt or Option + 数字キー/テンキーに変更する (Default: オフ)
@@ -406,6 +409,7 @@ export const SYNCABLE_SETTINGS_KEYS: (keyof IClientSettings)[] = [
     'show_player_background_image',
     'use_pure_black_player_background',
     'tv_channel_sort_by_jikkyo_force',
+    'tv_hide_pinned_tab_when_empty',
     'tv_channel_up_down_buttons_reverse',
     'tv_channel_selection_requires_alt_key',
     'use_28hour_clock',

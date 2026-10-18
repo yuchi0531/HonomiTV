@@ -67,6 +67,18 @@
                 </v-switch>
             </div>
             <div class="settings__item settings__item--switch">
+                <label class="settings__item-heading" for="tv_hide_pinned_tab_when_empty">ピン留め中のチャンネルが無いときはピン留めタブを隠す</label>
+                <label class="settings__item-label" for="tv_hide_pinned_tab_when_empty">
+                    オンにすると、ピン留め中のチャンネルが 1 つも無いときにチャンネル一覧の「ピン留め」タブを表示しません。デフォルトはオンです。<br>
+                </label>
+                <label class="settings__item-label" for="tv_hide_pinned_tab_when_empty">
+                    オフにすると、ピン留めしていない状態でも「ピン留め」タブが残ります。空のタブを開いたままにしておきたい場合に使います。<br>
+                </label>
+                <v-switch class="settings__item-switch" color="primary" id="tv_hide_pinned_tab_when_empty" hide-details
+                    v-model="settingsStore.settings.tv_hide_pinned_tab_when_empty">
+                </v-switch>
+            </div>
+            <div class="settings__item settings__item--switch">
                 <label class="settings__item-heading" for="tv_channel_up_down_buttons_reverse">チャンネル切り替えボタンとショートカットキーの上下方向をテレビリモコン準拠にする</label>
                 <label class="settings__item-label" for="tv_channel_up_down_buttons_reverse">
                     オンにすると、視聴画面のチャンネル切り替えボタン <Icon icon="fluent:ios-arrow-left-24-filled" style="transform: rotate(90deg); margin-bottom: -4px;" /> <Icon icon="fluent:ios-arrow-right-24-filled" style="transform: rotate(90deg); margin-top: -4px;" /> とショートカットキーの上下キーの動作が反転します。デフォルトはオフです。<br>

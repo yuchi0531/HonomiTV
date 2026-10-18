@@ -124,4 +124,84 @@ describe('ChannelsStore network source recovery', () => {
 
         expect(Array.from(store.channels_list_with_pinned.keys())).not.toContain('ネット');
     });
+
+    it('hides the pinned tab when no channel is pinned', async () => {
+        // ピン留めが 0 件なら、地デジなどのタブが残っていてもピン留めタブは出さない
+        const broadcast = {...jellyfinChannel, id: 'broadcast', display_channel_id: 'gr011', type: 'GR' as const};
+        vi.spyOn(Channels, 'fetchAllChannels').mockImplementation(async source =>
+            source === 'Jellyfin' ? createResponse([], null) : {...createResponse([], null), GR: [broadcast]});
+        const store = useChannelsStore();
+        const settings = useSettingsStore();
+        settings.settings.pinned_channel_ids = [];
+
+        await store.update(true);
+
+        expect(Array.from(store.channels_list_with_pinned.keys())).not.toContain('ピン留め');
+        // 地デジタブは残る
+        expect(Array.from(store.channels_list_with_pinned.keys())).toContain('地デジ');
+    });
+
+    it('shows the pinned tab when at least one channel is pinned', async () => {
+        vi.spyOn(Channels, 'fetchAllChannels').mockImplementation(async source =>
+            source === 'Jellyfin' ? createResponse([jellyfinChannel], null) : createResponse([], null));
+        const store = useChannelsStore();
+        const settings = useSettingsStore();
+        settings.settings.pinned_channel_ids = ['jellyfin-1'];
+
+        await store.update(true);
+
+        expect(store.channels_list_with_pinned.get('ピン留め')?.map((channel) => channel.id)).toEqual(['jellyfin-1']);
+    });
+
+    it('hides the pinned tab before the first update when nothing is pinned', () => {
+        // 初回取得前でも、ピン留めが 0 件なら空のピン留めタブを出さない
+        const store = useChannelsStore();
+        useSettingsStore().settings.pinned_channel_ids = [];
+        store.is_channels_list_initial_updated = false;
+        store.is_iptv_initial_updated = false;
+
+        expect(Array.from(store.channels_list_with_pinned.keys())).not.toContain('ピン留め');
+    });
+
+    it('keeps the pinned tab when the hide setting is turned off', async () => {
+        // 設定をオフにすると、ピン留めが 0 件でも空のピン留めタブを残す
+        const broadcast = {...jellyfinChannel, id: 'broadcast', display_channel_id: 'gr011', type: 'GR' as const};
+        vi.spyOn(Channels, 'fetchAllChannels').mockImplementation(async source =>
+            source === 'Jellyfin' ? createResponse([], null) : {...createResponse([], null), GR: [broadcast]});
+        const store = useChannelsStore();
+        const settings = useSettingsStore();
+        settings.settings.pinned_channel_ids = [];
+        settings.settings.tv_hide_pinned_tab_when_empty = false;
+
+        await store.update(true);
+
+        expect(Array.from(store.channels_list_with_pinned.keys())).toContain('ピン留め');
+        expect(store.channels_list_with_pinned.get('ピン留め')).toEqual([]);
+    });
+
+    it('keeps the pinned tab before the first update when the hide setting is off', () => {
+        const store = useChannelsStore();
+        const settings = useSettingsStore();
+        settings.settings.pinned_channel_ids = [];
+        settings.settings.tv_hide_pinned_tab_when_empty = false;
+        store.is_channels_list_initial_updated = false;
+        store.is_iptv_initial_updated = false;
+
+        expect(Array.from(store.channels_list_with_pinned.keys())).toContain('ピン留め');
+    });
+
+    it('keeps the pinned tab in the watch getter when the hide setting is off', async () => {
+        const broadcast = {...jellyfinChannel, id: 'broadcast', display_channel_id: 'gr011', type: 'GR' as const};
+        vi.spyOn(Channels, 'fetchAllChannels').mockImplementation(async source =>
+            source === 'Jellyfin' ? createResponse([], null) : {...createResponse([], null), GR: [broadcast]});
+        const store = useChannelsStore();
+        const settings = useSettingsStore();
+        settings.settings.pinned_channel_ids = [];
+        settings.settings.tv_hide_pinned_tab_when_empty = false;
+
+        await store.update(true);
+
+        // 視聴画面用のゲッターも同じ設定に従う
+        expect(Array.from(store.channels_list_with_pinned_for_watch.keys())).toContain('ピン留め');
+    });
 });
