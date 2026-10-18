@@ -285,7 +285,7 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload['allowed_mentions'], {'parse': []})
 
         embed = payload['embeds'][0]
-        self.assertEqual(embed['title'], '📺 新しい録画を検出しました')
+        self.assertEqual(embed['title'], '✅ 録画が完了しました')
         self.assertEqual(embed['color'], 0xE64F97)
         self.assertEqual(embed['footer'], {'text': 'KonomiTV'})
         self.assertIn('テストニュース', embed['description'])
@@ -443,9 +443,23 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(RecordingHTTPClient.requests), 1)
         embed = RecordingHTTPClient.requests[0]['json']['embeds'][0]
-        self.assertEqual(embed['title'], '⏺ 録画を開始しました')
+        self.assertEqual(embed['title'], '🔴 録画を開始しました')
         # 録画完了の見出しとは異なる
-        self.assertNotEqual(embed['title'], '📺 新しい録画を検出しました')
+        self.assertNotEqual(embed['title'], '✅ 録画が完了しました')
+
+    async def test_recording_start_and_completion_have_distinct_clear_titles(self) -> None:
+        """録画開始と録画完了の見出しは、どちらも状態が読み取れる別の文言になる。"""
+
+        service = WebhookNotificationService(self._config(events=['RecordingStarted', 'RecordingCompleted']))
+
+        await service.send_event(NotificationEvent('RecordingStarted', recorded_program=BuildRecordedProgram()))
+        await service.send_event(NotificationEvent('RecordingCompleted', recorded_program=BuildRecordedProgram()))
+
+        titles = [request['json']['embeds'][0]['title'] for request in RecordingHTTPClient.requests]
+        self.assertEqual(titles, ['🔴 録画を開始しました', '✅ 録画が完了しました'])
+        # 「検出」のような、開始とも完了とも読める曖昧な表現を使わない
+        for title in titles:
+            self.assertNotIn('検出', title)
 
     async def test_sends_reservation_added_event(self) -> None:
         """予約追加イベントは予約 ID と番組情報を Embed に含める。"""
@@ -501,7 +515,7 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(RecordingHTTPClient.requests), 1)
         self.assertEqual(
             RecordingHTTPClient.requests[0]['json']['embeds'][0]['title'],
-            '📺 新しい録画を検出しました',
+            '✅ 録画が完了しました',
         )
 
     async def test_event_selection_does_not_leak_between_instances(self) -> None:

@@ -148,14 +148,14 @@ class TelegramNotificationService(NotificationService):
             assert event.recorded_program is not None
             return self._build_recording_message(
                 event.recorded_program,
-                heading = '⏺ **録画を開始しました**',
+                heading = '🔴 **録画を開始しました**',
             )
         if event.type == 'RecordingCompleted':
             assert event.recorded_program is not None
-            # 従来と同じ本文を維持する (既存ユーザーの見た目を変えない)
+            # 「検出」では録画開始と区別が付かないため、録画が終わったことを明示する
             return self._build_recording_message(
                 event.recorded_program,
-                heading = '📺 **新しい録画を検出しました**',
+                heading = '✅ **録画が完了しました**',
             )
         assert event.reservation is not None
         if event.type == 'ReservationAdded':
@@ -219,7 +219,7 @@ class TelegramNotificationService(NotificationService):
 
         message = "🔔 **通知設定テスト**\n\n" + self._build_recording_message(
             recorded_program,
-            heading = '📺 **新しい録画を検出しました**',
+            heading = '✅ **録画が完了しました**',
         )
 
         try:
@@ -442,8 +442,8 @@ class WebhookNotificationService(NotificationService):
 
         # イベント種別ごとの見出し
         event_titles: dict[NotificationEventType, str] = {
-            'RecordingStarted': '⏺ 録画を開始しました',
-            'RecordingCompleted': '📺 新しい録画を検出しました',
+            'RecordingStarted': '🔴 録画を開始しました',
+            'RecordingCompleted': '✅ 録画が完了しました',
             'ReservationAdded': '🗓 録画予約を追加しました',
             'ReservationDeleted': '🗑 録画予約を削除しました',
         }
