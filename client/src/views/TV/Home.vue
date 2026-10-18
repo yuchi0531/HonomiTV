@@ -6,16 +6,17 @@
             <div class="channels-container channels-container--home" :class="{'channels-container--loading': is_loading}">
                 <SPHeaderBar />
                 <div class="channels-tab">
-                    <div class="channels-tab__buttons" :style="{
-                        '--tab-length': Array.from(home_channels_list_with_pinned).length,
-                        '--active-tab-index': active_tab_index,
-                    }">
+                    <div class="channels-tab__buttons" ref="channels_tab_buttons">
                         <v-btn variant="flat" class="channels-tab__button"
                             v-for="([channels_type,], index) in Array.from(home_channels_list_with_pinned)" :key="channels_type"
                             @click="active_tab_index = index">
                             {{channels_type}}
                         </v-btn>
-                        <div class="channels-tab__highlight"></div>
+                        <!-- ハイライトはタブの実測幅に合わせて動かす (固定幅のタブとコンテナ幅は一致しない) -->
+                        <div class="channels-tab__highlight" :style="{
+                            width: `${tab_highlight_metrics.width}px`,
+                            transform: `translateX(${tab_highlight_metrics.left}px)`,
+                        }"></div>
                     </div>
                 </div>
                 <Swiper class="channels-list" :space-between="32" :auto-height="true" :touch-start-prevent-default="false"
@@ -209,6 +210,14 @@ export default defineComponent({
             // 現在アクティブなタブ
             active_tab_index: 0 as number,
 
+            // タブハイライトの位置と幅 (px)
+            // タブは固定幅で並び、コンテナより広い場合は横スクロールするため、
+            // コンテナ幅から計算すると実際のタブ位置とずれる。DOM から実測して合わせる
+            tab_highlight_metrics: {
+                left: 0,
+                width: 0,
+            },
+
             // Swiper のインスタンス
             swiper_instance: null as SwiperClass | null,
 
@@ -251,6 +260,11 @@ export default defineComponent({
         },
     },
     watch: {
+        // タブ数が変わると各タブの位置もずれるため、ハイライトを測り直す
+        // ピン留めの追加・削除や、ネットテレビの有効化でタブが増減する
+        'home_channels_list_with_pinned.size'() {
+            void this.$nextTick(() => this.updateTabHighlightMetrics());
+        },
         active_tab_index(newIndex: number, oldIndex: number) {
             // Swiper アニメーション開始
             this.is_swiper_transitioning = true;
@@ -265,6 +279,9 @@ export default defineComponent({
             // 現在なアクティブなタブを Swiper 側に随時反映する
             // ローディング中のみスライドアニメーションを実行せずに即座に切り替える
             this.swiper_instance?.slideTo(this.active_tab_index, this.is_loading === true ? 0 : undefined);
+
+            // タブの描画が終わってから、ハイライトを実測位置へ合わせる
+            void this.$nextTick(() => this.updateTabHighlightMetrics());
         }
     },
     // 開始時に実行
@@ -323,6 +340,14 @@ export default defineComponent({
         // チャンネル情報の更新が終わったタイミングでローディング状態を解除する
         await Utils.sleep(0.01);  // 少し待たないとタブのハイライトがアニメーションされてしまう
         this.is_loading = false;
+
+        // タブ幅は画面幅で変わる (スマホ縦は 90px、それ以外は 98px) ため、初回とリサイズ時に測り直す
+        await this.$nextTick();
+        this.updateTabHighlightMetrics();
+        window.addEventListener('resize', this.updateTabHighlightMetrics, {
+            passive: true,
+            signal: this.scroll_abort_controller.signal,
+        });
     },
     // 終了前に実行
     beforeUnmount() {
@@ -338,6 +363,34 @@ export default defineComponent({
         this.scroll_abort_controller = new AbortController();
     },
     methods: {
+        /**
+         * アクティブなタブの実測位置に合わせてハイライトを更新する
+         *
+         * タブは固定幅で並び、合計幅がコンテナを超える場合は横スクロールする。
+         * そのためコンテナ幅をタブ数で割った値は実際のタブ幅と一致しない。
+         * ここではタブ要素の実測値を使い、スクロール時も同じ座標系で追従させる。
+         */
+        updateTabHighlightMetrics() {
+            // タブがまだ描画されていない場合は何もしない
+            const buttons = this.$refs.channels_tab_buttons as HTMLElement | undefined;
+            if (buttons === undefined) {
+                return;
+            }
+            const tab_elements = buttons.querySelectorAll<HTMLElement>('.channels-tab__button');
+            const active_element = tab_elements[this.active_tab_index];
+            if (active_element === undefined) {
+                return;
+            }
+
+            // offsetLeft は親 (channels-tab__buttons) のパディングボックス基準のため、
+            // 横スクロールしても値は変わらない。ハイライトも同じ親の絶対配置なので、
+            // スクロール量を足す必要がなく、そのまま追従する
+            this.tab_highlight_metrics = {
+                left: active_element.offsetLeft,
+                width: active_element.offsetWidth,
+            };
+        },
+
 
         // Swiper のスライド切り替えアニメーション完了後に新しいタブのスクロール位置を復元
         onSlideChangeTransitionEnd() {
@@ -740,12 +793,13 @@ export default defineComponent({
                 position: absolute;
                 left: 0;
                 bottom: 0;
-                width: calc(100% / var(--tab-length, 0));
                 height: 3px;
                 background: rgb(var(--v-theme-primary));
-                transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.5, 1);
-                transform: translateX(calc(100% * var(--active-tab-index, 0)));
-                will-change: transform;
+                // 位置と幅はタブの実測値から JS 側で設定する
+                // タブは固定幅で並び、コンテナより広い場合は横スクロールするため、
+                // コンテナ幅をタブ数で割った値では実際のタブ位置と一致しない
+                transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.5, 1), width 0.3s cubic-bezier(0.25, 0.8, 0.5, 1);
+                will-change: transform, width;
             }
         }
     }
