@@ -405,14 +405,22 @@ class MetadataAnalyzer:
                     profile.split('@')[0] if profile else 'Main'
                 )
                 ## スキャン形式
-                field_order = video_stream.field_order or 'tt'  # 通常取得できるはずだが、デフォルトはインターレースとする
+                ## HEVC などでは VUI にフィールド情報が書かれず ffprobe が "unknown" を返すことがある。
+                ## "unknown" をそのままインターレース扱いにすると、実際はプログレッシブな録画が
+                ## 再エンコード対象になってしまうため、実フレームから判定し直す。
+                field_order = video_stream.field_order or ''
                 if field_order.lower() == 'progressive':
                     video_scan_type = 'Progressive'
+                elif field_order.lower() in ('', 'unknown'):
+                    video_scan_type = self.__detectScanTypeFromFrames()
                 else:
                     video_scan_type = 'Interlaced'
-                ## ここで Progressive になっているが、全体解析側の field_order が progressive でない場合はインターレースとする
+                ## ここで Progressive になっているが、全体解析側の field_order が明確にインターレースを示す場合はインターレースとする
                 ## (部分解析のみ、稀に本来インターレースにもかかわらずプログレッシブ映像と判定される場合があるため)
-                if video_scan_type == 'Progressive' and (full_probe_video_streams[0].field_order or '').lower() != 'progressive':
+                ## 全体解析側も "unknown" の場合は、実フレームから判定した結果を尊重する
+                full_probe_field_order = (full_probe_video_streams[0].field_order or '').lower()
+                if (video_scan_type == 'Progressive' and
+                    full_probe_field_order not in ('', 'unknown', 'progressive')):
                     video_scan_type = 'Interlaced'
                 ## フレームレート
                 video_frame_rate = ParseFPS(video_stream.avg_frame_rate) or ParseFPS(video_stream.r_frame_rate)
@@ -1042,6 +1050,71 @@ class MetadataAnalyzer:
             return (full_probe, sample_probe, end_ts_offset)
         else:
             return (full_probe, sample_probe, None)
+
+
+    def __detectScanTypeFromFrames(self) -> Literal['Progressive', 'Interlaced']:
+        """
+        実際のフレーム情報からプログレッシブ / インターレースを判定する
+
+        ffprobe の field_order は VUI にフィールド情報が無い映像 (NVEnc が出力した HEVC など) で
+        "unknown" になる。その場合はコンテナのメタデータではなく、デコードした各フレームの
+        interlaced_frame フラグを数えて実態を判定する。
+
+        Returns:
+            Literal['Progressive', 'Interlaced']: 判定結果。判定できない場合はインターレース扱いにする。
+        """
+
+        # 先頭から数十フレームを解析する
+        ## インターレース映像なら数フレーム見れば十分に interlaced_frame が立つ
+        ## 解析量を抑えるため、先頭 2 秒程度に留める
+        args = [
+            '-hide_banner',
+            '-loglevel', 'error',
+            '-select_streams', 'v:0',
+            '-read_intervals', '%+#2',
+            '-show_entries', 'frame=interlaced_frame',
+            '-of', 'json',
+            str(self.recorded_file_path),
+        ]
+        result = self.__runFFprobe(args)
+        if result is None:
+            return 'Interlaced'
+
+        frames = result.get('frames', [])
+        if not isinstance(frames, list) or len(frames) == 0:
+            return 'Interlaced'
+
+        # interlaced_frame が 1 のフレーム数と、判定できたフレーム数を数える
+        interlaced_count = 0
+        judged_count = 0
+        for frame in frames:
+            if not isinstance(frame, dict):
+                continue
+            value = frame.get('interlaced_frame')
+            if value is None:
+                continue
+            judged_count += 1
+            if int(value) != 0:
+                interlaced_count += 1
+
+        # 判定できるフレームが無い場合は従来どおりインターレース扱いにする
+        if judged_count == 0:
+            return 'Interlaced'
+
+        # 半数を超えるフレームがインターレースと判定された場合のみインターレースとする
+        ## テレシネ混在などで一部だけ interlaced_frame が立つ映像を、インターレース扱いにして
+        ## 不要な yadif 適用 (画質劣化) を起こさないようにする
+        if interlaced_count * 2 > judged_count:
+            logging.debug(
+                f'{self.recorded_file_path}: Detected interlaced frames '
+                f'({interlaced_count}/{judged_count}).'
+            )
+            return 'Interlaced'
+        logging.debug(
+            f'{self.recorded_file_path}: Detected progressive frames '
+            f'({judged_count - interlaced_count}/{judged_count}).'
+        )
+        return 'Progressive'
 
 
     def __runFFprobe(self, args: list[str], input_bytes: bytes | None = None) -> dict[str, Any] | None:
