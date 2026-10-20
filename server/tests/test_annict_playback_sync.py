@@ -143,13 +143,49 @@ class AnnictPlaybackSyncTest(unittest.IsolatedAsyncioTestCase):
         create.assert_not_awaited()
         self.assertEqual(await AnnictEpisodeRecord.all().count(), 0)
 
-    async def test_unlinked_series_is_not_eligible(self) -> None:
-        """Annict 作品と照合できていない Series は対象外。"""
+    async def test_unlinked_series_is_matched_on_playback(self) -> None:
+        """Annict 作品と照合できていない Series は、視聴時にその場で照合する。
+
+        起動時の一括同期を待たずに投稿できるようにするため、未照合でも照合を試みる。
+        """
+
+        program = await self._createRecording()
+        await Series.filter(id=self.series.id).update(annict_work_id=None, annict_work_name=None)
+        episodes = [{'id': 501, 'sort_number': 20, 'title': '第2話'}]
+
+        with (
+            # マイリストには無いが、タイトル検索で見つかる状況
+            patch('app.utils.AnnictPlaybackSync.AnnictClient.fetchCandidateWorks', AsyncMock(return_value=[])),
+            patch(
+                'app.utils.AnnictPlaybackSync.AnnictClient.searchWorksByTitle',
+                AsyncMock(return_value=[{'id': 8888, 'titles': ['作品']}]),
+            ),
+            patch('app.utils.AnnictPlaybackSync.AnnictClient.fetchEpisodes', AsyncMock(return_value=episodes)),
+            patch('app.utils.AnnictPlaybackSync.AnnictClient.createEpisodeRecord', AsyncMock(return_value=9001)) as create,
+        ):
+            result = await SyncAnnictPlaybackProgress(
+                program.id,
+                BangumiPlaybackProgressRequest(playback_position=1700.0, duration=1800.0),
+                self.user,
+            )
+
+        self.assertEqual(result.status, 'Completed')
+        create.assert_awaited_once()
+        # 照合結果が Series に保存されている
+        refreshed = await Series.get(id=self.series.id)
+        self.assertEqual(refreshed.annict_work_id, 8888)
+
+    async def test_unlinked_series_stays_not_eligible_when_no_work_matches(self) -> None:
+        """Annict に該当作品が無ければ、従来どおり対象外にする。"""
 
         program = await self._createRecording()
         await Series.filter(id=self.series.id).update(annict_work_id=None, annict_work_name=None)
 
-        with patch('app.utils.AnnictPlaybackSync.AnnictClient.createEpisodeRecord', AsyncMock()) as create:
+        with (
+            patch('app.utils.AnnictPlaybackSync.AnnictClient.fetchCandidateWorks', AsyncMock(return_value=[])),
+            patch('app.utils.AnnictPlaybackSync.AnnictClient.searchWorksByTitle', AsyncMock(return_value=[])),
+            patch('app.utils.AnnictPlaybackSync.AnnictClient.createEpisodeRecord', AsyncMock()) as create,
+        ):
             result = await SyncAnnictPlaybackProgress(
                 program.id,
                 BangumiPlaybackProgressRequest(playback_position=1700.0, duration=1800.0),

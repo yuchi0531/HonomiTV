@@ -101,10 +101,27 @@ async def SyncAnnictPlaybackProgress(
         return schemas.BangumiPlaybackProgressResponse(status='Pending')
 
     series = await Series.get_or_none(id=recorded_program.series_id) if recorded_program.series_id is not None else None
-    if series is None or series.annict_work_id is None:
+    if series is None:
         return schemas.BangumiPlaybackProgressResponse(status='NotEligible')
 
     access_token = current_user.decryptAnnictAccessToken()
+
+    # まだ Annict 作品へ紐付いていない Series は、この場で照合を試みる
+    ## 起動時の一括同期 (30 分間隔) を待たずに投稿できるようにするため。
+    ## 紐付かない場合 (Annict に該当作品が無い、候補が曖昧など) は従来どおり対象外にする。
+    if series.annict_work_id is None:
+        try:
+            works = await AnnictClient.fetchCandidateWorks(access_token)
+            await AnnictClient.linkSeriesToWork(series, works, access_token)
+        except (httpx.HTTPError, ValueError) as ex:
+            # 照合の失敗は投稿の失敗と区別し、次回の視聴や定期同期で再試行できるようにする
+            logging.warning(
+                '[AnnictPlaybackSync][SyncAnnictPlaybackProgress] Annict work matching failed.',
+                exc_info = ex,
+            )
+            return schemas.BangumiPlaybackProgressResponse(status='Pending')
+    if series.annict_work_id is None:
+        return schemas.BangumiPlaybackProgressResponse(status='NotEligible')
 
     # 既に記録済みのエピソードは重複投稿しない (Annict の record は公開ログになるため特に重要)
     try:
