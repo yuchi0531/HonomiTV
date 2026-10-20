@@ -41,6 +41,10 @@ class AnnictClient:
     ELIGIBLE_GENRES = {'アニメ・特撮', 'ドラマ', 'ドキュメンタリー・教養', 'バラエティ', '音楽'}
     # 視聴中・視聴済みとして候補に含めるステータス
     CANDIDATE_STATUSES = ('watching', 'watched')
+
+    # 1 回の作品同期でタイトル検索する回数の上限
+    ## マイリストに無い作品を探すために Annict API を叩く回数を抑える
+    MAX_TITLE_SEARCHES_PER_SYNC = 20
     # 読み取り結果のキャッシュ設定
     ## 認証ごとに隔離し、公開範囲の違うアカウントへ応答を流用しない。token は保持せずハッシュだけをキーに使う。
     READ_CACHE_TTL_SECONDS = 300
@@ -210,6 +214,47 @@ class AnnictClient:
                     titles = [title for title in titles if title != ''],
                 )
         return list(works.values())
+
+
+    @classmethod
+    async def searchWorksByTitle(cls, access_token: str, title: str) -> list[AnnictWorkCandidate]:
+        """
+        Annict に登録されている作品をタイトルで検索する。
+
+        連携ユーザーのマイリストに無い作品でも、放送中の作品を Annict へ記録できるようにするために使う。
+        `filter_title` は部分一致のため、複数の候補が返ることを前提に呼び出し側で一意性を判定する。
+
+        Args:
+            access_token (str): Annict の個人用アクセストークン。
+            title (str): 検索する作品タイトル。
+
+        Returns:
+            list[AnnictWorkCandidate]: 検索で見つかった作品候補のリスト。
+
+        Raises:
+            httpx.HTTPError: 取得に失敗した場合。
+        """
+
+        # 検索語が空だと全作品が返るため、呼び出し側の判断を待たずに空リストを返す
+        keyword = title.strip()
+        if keyword == '':
+            return []
+
+        works = await cls._fetchPagedList(
+            access_token,
+            '/works',
+            'works',
+            {'filter_title': keyword},
+        )
+        candidates: list[AnnictWorkCandidate] = []
+        for work in works:
+            work_id = int(work['id'])
+            titles = [str(work.get('title') or ''), str(work.get('title_en') or ''), str(work.get('title_kana') or '')]
+            candidates.append(AnnictWorkCandidate(
+                id = work_id,
+                titles = [candidate_title for candidate_title in titles if candidate_title != ''],
+            ))
+        return candidates
 
 
     @classmethod
@@ -420,6 +465,13 @@ class AnnictClient:
         access_token = user.decryptAnnictAccessToken()
         works = await cls.fetchCandidateWorks(access_token)
         matched_count = 0
+        # タイトル検索の結果を Series タイトル単位で使い回す
+        ## 同じ作品名の Series が複数あっても検索 API を繰り返さない
+        title_search_cache: dict[str, list[AnnictWorkCandidate]] = {}
+        # 1 回の同期でタイトル検索する回数の上限
+        ## マイリストに無い Series ごとに検索すると、Series 数だけ Annict API を叩いてしまう
+        ## 未照合の作品が大量にある初回でも現実的な時間で終わるよう上限を設ける
+        remaining_title_searches = cls.MAX_TITLE_SEARCHES_PER_SYNC
 
         for series in eligible_series:
             # 先行する同期で削除された Series を再処理しない
@@ -431,6 +483,14 @@ class AnnictClient:
                 work = next((candidate for candidate in works if candidate['id'] == series.annict_work_id), None)
             else:
                 work = cls.findWork(series.title, works)
+            # マイリストに無い作品でも、Annict 全体をタイトル検索して一意に決まるなら照合する
+            ## 「見てる」へ入れていない作品を一話だけ見た場合でも記録できるようにするため
+            ## 誤照合を避けるため、検索結果が十分に一意な場合だけ採用する (findWork と同じ基準)
+            if work is None and remaining_title_searches > 0:
+                if series.title not in title_search_cache:
+                    remaining_title_searches -= 1
+                    title_search_cache[series.title] = await cls.searchWorksByTitle(access_token, series.title)
+                work = cls.findWork(series.title, title_search_cache[series.title])
             if work is None:
                 continue
 
