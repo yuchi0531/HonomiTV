@@ -505,22 +505,25 @@ export class ProgramUtils {
 
 
     /**
-     * 録画期間の文字列表現を取得する
+     * 録画番組が放送されていた時間の文字列表現を取得する
+     *
+     * 録画ファイル自体の時間ではなく、EPG 上の番組の放送時間を表示する。
+     * 前後の CM をカットして保存している場合、録画ファイルの実時間は放送時間より短くなるため、
+     * ファイルの時間を出すと「実際より短い番組」に見えてしまう。
+     *
      * @param recorded_program 録画番組情報
-     * @returns 録画番組の録画開始時刻〜録画終了時刻
+     * @returns 番組の放送開始時刻〜放送終了時刻
      */
     static getRecordingTime(recorded_program: IRecordedProgram): string {
 
-        // 録画期間が不明な場合は代替文字列を返す
-        if (recorded_program.recorded_video.recording_start_time === null || recorded_program.recorded_video.recording_end_time === null) {
-            return '----/--/-- (-) --:--:-- ～ --:--:-- (--分)';
-        }
-
-        const start_time = dayjs(recorded_program.recorded_video.recording_start_time);
-        const end_time = dayjs(recorded_program.recorded_video.recording_end_time);
+        const start_time = dayjs(recorded_program.start_time);
+        const end_time = dayjs(recorded_program.end_time);
 
         // 分単位の番組長 (割り切れない場合は小数第2位で四捨五入)
-        const duration = Math.round(recorded_program.recorded_video.duration / 60 * 100) / 100;
+        // 録画ファイルの実時間ではなく番組の放送時間を使う
+        const duration = Math.round(
+            (end_time.valueOf() - start_time.valueOf()) / 1000 / 60 * 100,
+        ) / 100;
 
         return Utils.apply28HourClock(`${start_time.format('YYYY/MM/DD (dd) HH:mm:ss')} ～ ${end_time.format('HH:mm:ss')} (${duration}分)`);
     }
