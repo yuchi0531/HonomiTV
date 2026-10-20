@@ -478,39 +478,89 @@ class AnnictClient:
             if await Series.filter(id=series.id).exists() is False:
                 continue
 
-            # 既に作品が確定している Series は、別の表記で上書きしない
-            if series.annict_work_id is not None:
-                work = next((candidate for candidate in works if candidate['id'] == series.annict_work_id), None)
-            else:
-                work = cls.findWork(series.title, works)
-            # マイリストに無い作品でも、Annict 全体をタイトル検索して一意に決まるなら照合する
-            ## 「見てる」へ入れていない作品を一話だけ見た場合でも記録できるようにするため
-            ## 誤照合を避けるため、検索結果が十分に一意な場合だけ採用する (findWork と同じ基準)
-            if work is None and remaining_title_searches > 0:
-                if series.title not in title_search_cache:
-                    remaining_title_searches -= 1
-                    title_search_cache[series.title] = await cls.searchWorksByTitle(access_token, series.title)
-                work = cls.findWork(series.title, title_search_cache[series.title])
-            if work is None:
-                continue
-
-            # Annict 作品 ID は一意なので、同じ作品に複数の Series が紐付かないよう確認する
-            ## Annict には Bangumi の「条目統合」に相当する仕組みが無いため、既存 Series の統合は行わない
-            conflict = await Series.get_or_none(annict_work_id=work['id'])
-            if conflict is not None and conflict.id != series.id:
-                logging.warning(
-                    f'[AnnictClient][syncUserWorks] Annict work is already linked to another Series. '
-                    f'[annict_work_id: {work["id"]}, series_id: {series.id}, linked_series_id: {conflict.id}]',
-                )
-                continue
-
-            title = (work['titles'] or [''])[0] or series.title
-            series.annict_work_id = work['id']
-            series.annict_work_name = title
-            await series.save(update_fields=['annict_work_id', 'annict_work_name'])
-            matched_count += 1
+            # タイトル検索の残り回数を判定するため、呼び出し前のキー数を控える
+            cached_title_count_before = len(title_search_cache)
+            matched = await cls.linkSeriesToWork(
+                series,
+                works,
+                access_token,
+                title_search_cache = title_search_cache,
+                allow_title_search = remaining_title_searches > 0,
+            )
+            # 新たに検索した分だけ、残り回数を減らす
+            ## メモ化により同じタイトルの 2 回目以降は検索しないため、実際の API 呼び出し回数と一致する
+            remaining_title_searches -= len(title_search_cache) - cached_title_count_before
+            if matched is True:
+                matched_count += 1
 
         return matched_count
+
+
+    @classmethod
+    async def linkSeriesToWork(
+        cls,
+        series: Series,
+        works: list[AnnictWorkCandidate],
+        access_token: str,
+        *,
+        title_search_cache: dict[str, list[AnnictWorkCandidate]] | None = None,
+        allow_title_search: bool = True,
+    ) -> bool:
+        """
+        1 つの Series を Annict 作品へ照合して保存する。
+
+        起動時の一括同期だけでなく、視聴完了時にも呼べるよう単一 Series 単位に切り出している。
+        これにより「サーバーを再起動しないと照合されない」状態を避ける。
+
+        Args:
+            series (Series): 照合する Series。
+            works (list[AnnictWorkCandidate]): 連携ユーザーのマイリスト由来の作品候補。
+            access_token (str): Annict の個人用アクセストークン。
+            title_search_cache (dict[str, list[AnnictWorkCandidate]] | None): タイトル検索結果の使い回し。
+            allow_title_search (bool): マイリストに無い場合にタイトル検索を行うかどうか。
+
+        Returns:
+            bool: 新たに照合できた場合は True。
+        """
+
+        # 既に作品が確定している Series は、別の表記で上書きしない
+        if series.annict_work_id is not None:
+            work = next((candidate for candidate in works if candidate['id'] == series.annict_work_id), None)
+            # 既に紐付いている場合は保存も通知もしない
+            if work is not None:
+                return False
+            # 紐付け済みだがマイリストから消えている場合は、現在の紐付けを維持する
+            return False
+
+        work = cls.findWork(series.title, works)
+        # マイリストに無い作品でも、Annict 全体をタイトル検索して一意に決まるなら照合する
+        ## 「見てる」へ入れていない作品を一話だけ見た場合でも記録できるようにするため
+        ## 誤照合を避けるため、検索結果が十分に一意な場合だけ採用する (findWork と同じ基準)
+        if work is None and allow_title_search is True:
+            if title_search_cache is not None:
+                if series.title not in title_search_cache:
+                    title_search_cache[series.title] = await cls.searchWorksByTitle(access_token, series.title)
+                work = cls.findWork(series.title, title_search_cache[series.title])
+            else:
+                work = cls.findWork(series.title, await cls.searchWorksByTitle(access_token, series.title))
+        if work is None:
+            return False
+
+        # Annict 作品 ID は一意なので、同じ作品に複数の Series が紐付かないよう確認する
+        ## Annict には Bangumi の「条目統合」に相当する仕組みが無いため、既存 Series の統合は行わない
+        conflict = await Series.get_or_none(annict_work_id=work['id'])
+        if conflict is not None and conflict.id != series.id:
+            logging.warning(
+                f'[AnnictClient][linkSeriesToWork] Annict work is already linked to another Series. '
+                f'[annict_work_id: {work["id"]}, series_id: {series.id}, linked_series_id: {conflict.id}]',
+            )
+            return False
+
+        title = (work['titles'] or [''])[0] or series.title
+        series.annict_work_id = work['id']
+        series.annict_work_name = title
+        await series.save(update_fields=['annict_work_id', 'annict_work_name'])
+        return True
 
 
     @classmethod

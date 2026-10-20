@@ -266,40 +266,35 @@ class BangumiClientTest(unittest.TestCase):
         self.assertTrue(BangumiClient.isPlaybackCompleted(1620.0, 1800.0, None))
 
 
-    def test_playback_completion_uses_three_minutes_before_last_cm(self) -> None:
-        """最後の CM が 25 分開始なら、その 3 分前の 22 分から完了と判定する。"""
+    def test_playback_completion_ignores_cm_sections(self) -> None:
+        """CM が検出されていても、完了判定は常に 90% 固定にする。
+
+        以前は「最後の CM 群の 3 分前」を完了位置にしていたが、前後 CM をカットした録画では
+        CM が検出されず判定が安定しないため、CM の有無によらず 90% で統一した。
+        """
 
         cm_sections = [
             {'start_time': 600.0, 'end_time': 720.0},
             {'start_time': 1500.0, 'end_time': 1800.0},
         ]
 
-        self.assertFalse(BangumiClient.isPlaybackCompleted(1319.9, 1800.0, cm_sections))
-        self.assertTrue(BangumiClient.isPlaybackCompleted(1320.0, 1800.0, cm_sections))
+        # CM があっても 90% (1620 秒) が境界になる
+        self.assertFalse(BangumiClient.isPlaybackCompleted(1619.9, 1800.0, cm_sections))
+        self.assertTrue(BangumiClient.isPlaybackCompleted(1620.0, 1800.0, cm_sections))
 
 
-    def test_short_sponsor_gap_is_merged_between_cm_sections(self) -> None:
-        """CM に挟まれた 1 分未満のスポンサー表示は最後の CM 群へまとめる。"""
+    def test_playback_completion_is_stable_across_cm_patterns(self) -> None:
+        """CM 区間の並びが変わっても完了位置は 90% のまま変わらない。"""
 
-        cm_sections = [
-            {'start_time': 1500.0, 'end_time': 1650.0},
-            {'start_time': 1660.0, 'end_time': 1790.0},
+        patterns = [
+            [{'start_time': 1500.0, 'end_time': 1650.0}, {'start_time': 1660.0, 'end_time': 1790.0}],
+            [{'start_time': 1500.0, 'end_time': 1530.0}, {'start_time': 1590.0, 'end_time': 1800.0}],
+            [],
         ]
 
-        self.assertFalse(BangumiClient.isPlaybackCompleted(1319.9, 1800.0, cm_sections))
-        self.assertTrue(BangumiClient.isPlaybackCompleted(1320.0, 1800.0, cm_sections))
-
-
-    def test_one_minute_gap_keeps_cm_sections_separate(self) -> None:
-        """CM 間がちょうど 1 分なら別の CM 群として扱う。"""
-
-        cm_sections = [
-            {'start_time': 1500.0, 'end_time': 1530.0},
-            {'start_time': 1590.0, 'end_time': 1800.0},
-        ]
-
-        self.assertFalse(BangumiClient.isPlaybackCompleted(1409.9, 1800.0, cm_sections))
-        self.assertTrue(BangumiClient.isPlaybackCompleted(1410.0, 1800.0, cm_sections))
+        for cm_sections in patterns:
+            self.assertFalse(BangumiClient.isPlaybackCompleted(1619.9, 1800.0, cm_sections))
+            self.assertTrue(BangumiClient.isPlaybackCompleted(1620.0, 1800.0, cm_sections))
 
 
 class BangumiClientAsyncTest(unittest.IsolatedAsyncioTestCase):
