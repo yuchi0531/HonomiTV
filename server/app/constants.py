@@ -246,7 +246,9 @@ LIVE_STREAMING_QUALITY_TYPES = Literal['original'] | QUALITY_TYPES
 # ライブ API 全体で指定できる品質 (型定義)
 ## raw-mmts は BS4K の MMTS を Mirakurun から decode=0 で受け取り、そのままブラウザへ配信する特殊な品質。
 ## エンコードを行わないため QUALITY には含めず、ライブストリーム側だけで扱う。
-LIVE_QUALITY_TYPES = LIVE_STREAMING_QUALITY_TYPES | Literal['raw-mmts']
+## copy は dantto4k などで H.265 へ変換済みの MPEG-TS を、再エンコードせず HLS へ再多重化する特殊な品質。
+## BS4K の生ストリームが MPEG-TS (HEVC) で届く構成で使う。
+LIVE_QUALITY_TYPES = LIVE_STREAMING_QUALITY_TYPES | Literal['raw-mmts', 'copy']
 
 # 映像と音声の品質
 QUALITY: dict[QUALITY_TYPES, Quality] = {

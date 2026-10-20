@@ -28,10 +28,17 @@ class LiveStreamEncodingOptionsTest(unittest.TestCase):
         self.assertEqual(result.quality, 'raw-mmts')
         self.assertEqual(result.encoding_options.buildSuffix(), '')
 
-    def test_recorded_copy_quality_is_rejected_for_live_streams(self) -> None:
-        """録画 HLS 専用の copy をライブ配信では受け付けない。"""
+    def test_copy_quality_is_accepted_for_live_streams(self) -> None:
+        """dantto4k などで HEVC へ変換済みの MPEG-TS を、ライブでも再エンコードせず流せる。
 
-        self.assertIsNone(SplitLiveQualityAndEncodingOptions('copy'))
+        BS4K の生ストリームが MPEG-TS で届く構成では TLV パススルーが使えないため、
+        copy をライブ専用品質として受け付ける。
+        """
+
+        stream_quality = SplitLiveQualityAndEncodingOptions('copy')
+        self.assertIsNotNone(stream_quality)
+        assert stream_quality is not None
+        self.assertEqual(stream_quality.quality, 'copy')
 
 
 class BS4KLiveEncodingTest(unittest.IsolatedAsyncioTestCase):

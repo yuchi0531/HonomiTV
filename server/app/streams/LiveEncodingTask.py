@@ -790,6 +790,12 @@ class LiveEncodingTask:
         # オリジナル画質 ("original") が指定された場合のみ、mpeg2toh264 での変換・再生を前提に、
         # tsreadex からの出力をそのままストリーミングする
         is_original_quality = self.live_stream.quality == 'original'
+        # copy は dantto4k などで H.265 へ変換済みの MPEG-TS を、再エンコードせずに流す
+        ## original と同じくエンコーダーを通さず、tsreadex の出力をそのまま配信する
+        ## ブラウザは HEVC を直接デコードできるため、mpeg2toh264 のような変換も不要
+        is_copy_quality = self.live_stream.quality == 'copy'
+        # エンコーダーを通さずに配信するかどうか
+        is_passthrough_quality = is_original_quality is True or is_copy_quality is True
 
         # まだ Standby になっていなければ、ステータスを Standby に設定
         # 基本はエンコードタスクの呼び出し元である self.live_stream.connect() の方で Standby に設定されるが、再起動の場合はそこを経由しないため必要
@@ -860,7 +866,7 @@ class LiveEncodingTask:
         # PMT 上に常に AAC 音声・字幕・文字スーパーが存在する状態にはしつつ、
         # 音声・字幕・文字スーパーデータ自体は変換せずにそのまま出力する
         ## mpeg2toh264 は日本の放送波特有のデュアルモノや音声チャンネル切り替えに完全対応している模様 (凄すぎる…)
-        if is_original_quality is True:
+        if is_passthrough_quality is True:
             tsreadex_options += [
                 # 主音声ストリームが常に存在する状態にする
                 ## +1: ストリームが存在しない場合、無音の AAC ストリームが出力される
@@ -954,8 +960,8 @@ class LiveEncodingTask:
         ## KonomiTV の既存ロジックはエンコーダーレスで配信することを想定した設計になっておらず、
         ## エンコーダーに相当するプロセスがないと特別な条件分岐を大量追加する必要が出てくるため、当面この方向で対応する
         ## 無駄といえば無駄ではあるが、エンコーダーを起動するよりは負荷は飛躍的に抑えられているので妥協・・・
-        if is_original_quality is True:
-            # original は MMT/TLV チャンネルでは選択できず、常に tsreadex の MPEG-TS 出力を入力にする
+        if is_passthrough_quality is True:
+            # original / copy は MMT/TLV チャンネルでは選択できず、常に tsreadex の MPEG-TS 出力を入力にする
             ## この不変条件を型チェッカーにも明示し、起動失敗時の子プロセス回収と FD クローズを安全に行う
             assert tsreadex is not None
             assert tsreadex_read_pipe is not None
@@ -1002,7 +1008,7 @@ class LiveEncodingTask:
             if channel.is_radiochannel is True:
                 encoder_options = self.buildFFmpegOptionsForRadio()
             else:
-                assert self.live_stream.quality != 'original'
+                assert self.live_stream.quality not in ('original', 'copy')
                 encoder_options = self.buildFFmpegOptions(
                     self.live_stream.quality,
                     channel.type,
@@ -1037,7 +1043,7 @@ class LiveEncodingTask:
         else:
 
             # オプションを取得
-            assert self.live_stream.quality != 'original'
+            assert self.live_stream.quality not in ('original', 'copy')
             encoder_options = self.buildHWEncCOptions(self.live_stream.quality, ENCODER_TYPE, channel.type, is_fullhd_channel)
             logging.info(f'{self.live_stream.log_prefix} {ENCODER_TYPE} Commands:\n{ENCODER_TYPE} {" ".join(encoder_options)}')
 

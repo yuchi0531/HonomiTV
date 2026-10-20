@@ -815,6 +815,13 @@ class LiveStreamStatus(BaseModel):
     updated_at: float
     client_count: int
 
+class LiveStreamPassthroughInfo(BaseModel):
+    """BS4K チャンネルで利用できるパススルー再生の情報。"""
+
+    # 実際のストリームが MMT/TLV かどうか
+    ## dantto4k などで MPEG-TS へ変換した構成では False になる
+    is_mmt_tlv: bool
+
 class LiveStreamStatuses(BaseModel):
     Restart: dict[str, LiveStreamStatus]
     Idling: dict[str, LiveStreamStatus]

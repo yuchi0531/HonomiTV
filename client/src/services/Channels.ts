@@ -93,6 +93,14 @@ export const ILiveChannelDefault: ILiveChannel = {
 };
 
 /** すべてのチャンネルタイプの現在放送中のチャンネルの情報を表すインターフェイス */
+/**
+ * BS4K チャンネルで利用できるパススルー再生の情報
+ */
+export interface ILivePassthroughInfo {
+    /** 実際のストリームが MMT/TLV かどうか (dantto4k などで MPEG-TS へ変換した構成では false) */
+    is_mmt_tlv: boolean;
+}
+
 export interface ILiveChannelsList {
     GR: ILiveChannel[];
     BS: ILiveChannel[];
@@ -167,6 +175,27 @@ class Channels {
         // エラー処理
         if (response.type === 'error') {
             APIClient.showGenericError(response, 'チャンネル情報を取得できませんでした。');
+            return null;
+        }
+
+        return response.data;
+    }
+
+
+
+    /**
+     * BS4K チャンネルで利用できるパススルー再生の方式を取得する
+     * @param channel_id チャンネル ID (id or display_channel_id)
+     * @return パススルー再生の情報 (取得できなかった場合は null)
+     */
+    static async fetchPassthroughInfo(channel_id: string): Promise<ILivePassthroughInfo | null> {
+
+        // API リクエストを実行
+        const response = await APIClient.get<ILivePassthroughInfo>(`/streams/live/${channel_id}/passthrough-info`);
+
+        // エラー処理
+        if (response.type === 'error') {
+            // 判定できなくても視聴自体は継続できるため、汎用エラーは表示しない
             return null;
         }
 
