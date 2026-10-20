@@ -63,6 +63,8 @@ export interface IClientSettings {
     // tv_low_latency_mode_cellular: 同期無効
     // tv_24fps_mode: 同期無効
     // tv_24fps_mode_cellular: 同期無効
+    /** BS4K ライブ視聴時のパススルー方式 (TLV か HEVC の MPEG-TS か) */
+    bs4k_live_passthrough_mode: 'TLV' | 'MPEG-TS';
     // video_streaming_quality: 同期無効
     // video_streaming_quality_cellular: 同期無効
     // video_data_saver_mode: 同期無効

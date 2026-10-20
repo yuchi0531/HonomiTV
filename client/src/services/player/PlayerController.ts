@@ -9,7 +9,6 @@ import mpegts from 'mpegts.js';
 import { nextTick, watch } from 'vue';
 
 import APIClient from '@/services/APIClient';
-import Channels from '@/services/Channels';
 import OfflineVideos from '@/services/OfflineVideos';
 import CustomBufferController from '@/services/player/CustomBufferController';
 import LivePlaybackSession, { type ILivePlaybackSession } from '@/services/player/LivePlaybackSession';
@@ -172,9 +171,9 @@ class PlayerController {
     // HEVC 録画ファイルの場合、再エンコードなしで配信するため、モバイル回線向け画質スイッチを ON 状態で表示する
     private is_source_hevc = false;
 
-    // BS4K チャンネルの実際のストリームが MMT/TLV かどうか
-    // dantto4k などで MPEG-TS へ変換した構成では false になり、TLV パススルーを使えない
-    private is_live_stream_mmt_tlv = true;
+    // BS4K ライブ視聴時のパススルー方式
+    // TLV (MMT/TLV をそのまま再生) か MPEG-TS (dantto4k などで変換済みの HEVC を再生) を設定で選ぶ
+    private bs4k_live_passthrough_mode: 'TLV' | 'MPEG-TS' = 'TLV';
 
     // 破棄中かどうか
     // 破棄中は destroy() が呼ばれても何もしない
@@ -411,17 +410,10 @@ class PlayerController {
         const is_hevc_10bit_playback = is_hevc_playback === true && await PlayerUtils.isHEVC10bitVideoSupported();
         if (generation !== this.initialization_generation) return;
 
-        // BS4K チャンネルでは、実際のストリームが MMT/TLV かどうかをサーバーへ確認する
-        // dantto4k などで MPEG-TS へ変換した構成では TLV パススルーが使えないため、
-        // 画質リストを作る前に判定しておく必要がある
-        if (this.playback_mode === 'Live' && channels_store.channel.current.type === 'BS4K') {
-            const passthrough_info = await Channels.fetchPassthroughInfo(
-                channels_store.channel.current.display_channel_id,
-            );
-            // 取得できなかった場合は従来どおり TLV パススルーを試す
-            this.is_live_stream_mmt_tlv = passthrough_info === null ? true : passthrough_info.is_mmt_tlv;
-            if (generation !== this.initialization_generation) return;
-        }
+        // BS4K ライブ視聴時のパススルー方式は設定から決める
+        // dantto4k などで MPEG-TS (HEVC) へ変換した構成では TLV パススルーが再生できないため、
+        // 実際のストリーム形式に合わせて利用者が選ぶ
+        this.bs4k_live_passthrough_mode = settings_store.settings.bs4k_live_passthrough_mode;
 
         // セッション対応チャンネルは共通 API で開く。応答待ちの退出も所有権を失わず解放する。
         let session_open_error: string | null = null;
@@ -713,10 +705,10 @@ class PlayerController {
                         // BS4K チャンネルでは Raw MMTS を最優先の選択肢として追加する
                         // Raw MMTS は設定画面のデフォルト画質とは独立したライブ視聴時専用の画質として扱う
                         // ただし dantto4k などで MPEG-TS へ変換した構成ではストリームが TLV ではないため、
-                        // TLV パススルーを出すと再生できない。サーバーで判定した形式が MMT/TLV のときだけ追加する
+                        // TLV パススルーを出すと再生できない。設定が TLV のときだけ追加する
                         if (is_bs4k_channel === true) {
-                            // 実際のストリームが MMT/TLV のときだけ Raw MMTS 直通を出す
-                            if (this.is_live_stream_mmt_tlv === true) {
+                            // 設定が TLV のときだけ Raw MMTS 直通を出す
+                            if (this.bs4k_live_passthrough_mode === 'TLV') {
                                 qualities.push({
                                     name: PlayerController.PASSTHROUGH_PRIMARY_QUALITY_NAME,
                                     type: 'tlv',
@@ -748,9 +740,9 @@ class PlayerController {
                         }
                     }
                     // デフォルトの画質
-                    // BS4K チャンネルでは設定画面のデフォルト画質に関わらず Raw MMTS を初期選択にする
+                    // BS4K チャンネルでは設定画面のデフォルト画質に関わらず、パススルー方式を初期選択にする
                     let default_quality: string;
-                    if (is_bs4k_channel === true && this.is_live_stream_mmt_tlv === true) {
+                    if (is_bs4k_channel === true && this.bs4k_live_passthrough_mode === 'TLV') {
                         default_quality = PlayerController.PASSTHROUGH_PRIMARY_QUALITY_NAME;
                     // MPEG-TS へ変換済みの BS4K は、再エンコードせずに再生できる Original (HEVC) を既定にする
                     } else if (is_bs4k_channel === true) {

@@ -112,6 +112,26 @@
                     v-model="settingsStore.settings.tv_24fps_mode_cellular">
                 </v-switch>
             </div>
+            <div class="settings__item settings__item--sync-disabled">
+                <div class="settings__item-heading">BS4K のパススルー方式</div>
+                <div class="settings__item-label">
+                    BS4K チャンネルの視聴方法を選びます。デフォルトは [TLV] です。<br>
+                </div>
+                <label class="settings__item-label">
+                    [TLV] は、放送波をそのまま受け取って再生します。通常の BS4K 環境ではこちらを使います。<br>
+                </label>
+                <label class="settings__item-label">
+                    サーバー側で dantto4k などを使って放送波を H.265 (HEVC) の MPEG-TS へ変換している場合は、[MPEG-TS (HEVC)] を選んでください。[TLV] のままだと再生できません。<br>
+                </label>
+                <v-select class="settings__item-form" color="primary" variant="outlined" hide-details
+                    :density="is_form_dense ? 'compact' : 'default'"
+                    :items="[
+                        {title: 'TLV', value: 'TLV'},
+                        {title: 'MPEG-TS (HEVC)', value: 'MPEG-TS'},
+                    ]"
+                    v-model="settingsStore.settings.bs4k_live_passthrough_mode">
+                </v-select>
+            </div>
             <div class="settings__content-heading mt-6">
                 <Icon icon="fluent:movies-and-tv-20-filled" width="22px" />
                 <span class="ml-2">ビデオのオンデマンドストリーミング</span>
