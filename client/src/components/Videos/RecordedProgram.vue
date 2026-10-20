@@ -484,7 +484,22 @@ const confirmDeleteOfflineVideo = async (): Promise<void> => {
 
         .recorded-program__content {
             padding: 10px 12px;
+            // 横並び用の左右マージンが残っていると、カード端から不自然に空くため打ち消す
+            // 縦型では余白を padding だけで確保する
+            margin-left: 0px;
+            margin-right: 0px;
             min-width: 0;
+
+            @include smartphone-vertical {
+                margin-left: 0px;
+                margin-right: 0px;
+            }
+
+            &-header {
+                // タイトルの左端がサムネイルと揃うよう、追加のインデントを入れない
+                margin-left: 0px;
+                padding-left: 0px;
+            }
         }
 
         // 縦型では概要文を省き、タイトルと補足情報だけを見せる
