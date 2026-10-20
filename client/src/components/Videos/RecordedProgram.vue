@@ -7,6 +7,7 @@
             'recorded-program--offline': forOffline,
             'recorded-program--offline-blocked': isOfflineInteractionBlocked,
             'recorded-program--offline-job-failed': isOfflineJobFailed,
+            'recorded-program--grid': forGridView,
         }">
         <div class="recorded-program__container">
             <div class="recorded-program__thumbnail">
@@ -190,6 +191,8 @@ const props = withDefaults(defineProps<{
     forMylist?: boolean;
     forWatchedHistory?: boolean;
     forOffline?: boolean;
+    /** グリッド表示用の縦型カードとして表示するかどうか */
+    forGridView?: boolean;
     offlineVideo?: IOfflineVideo | null;
     offlineDownloadJob?: IOfflineDownloadJob | null;
 }>(), {
@@ -443,6 +446,52 @@ const confirmDeleteOfflineVideo = async (): Promise<void> => {
     text-decoration: none;
     user-select: none;
     box-sizing: border-box;
+
+    // グリッド表示: サムネイルを上、番組情報を下に置く縦型カード
+    &--grid {
+        height: auto;
+        padding: 0px;
+        border-radius: 8px;
+        overflow: hidden;
+
+        .recorded-program__container {
+            flex-direction: column;
+            align-items: stretch;
+            padding: 0px;
+            height: auto;
+        }
+
+        .recorded-program__thumbnail {
+            width: 100%;
+            height: auto;
+            aspect-ratio: 16 / 9;
+            border-radius: 0px;
+
+            @include smartphone-vertical {
+                width: 100%;
+                aspect-ratio: 16 / 9;
+            }
+
+            &-image {
+                border-radius: 0px;
+                aspect-ratio: 16 / 9;
+
+                @include smartphone-vertical {
+                    aspect-ratio: 16 / 9;
+                }
+            }
+        }
+
+        .recorded-program__content {
+            padding: 10px 12px;
+            min-width: 0;
+        }
+
+        // 縦型では概要文を省き、タイトルと補足情報だけを見せる
+        .recorded-program__content-description {
+            display: none;
+        }
+    }
     cursor: pointer;
     content-visibility: auto;
     contain-intrinsic-height: auto 125px;

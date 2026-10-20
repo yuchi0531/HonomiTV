@@ -43,6 +43,15 @@
                     <span class="text-primary">もっと見る</span>
                     <Icon icon="fluent:chevron-right-12-regular" width="18px" class="ml-1 text-text-darken-1" style="margin: 0px -4px;" />
                 </v-btn>
+                <!-- リスト表示とグリッド表示を切り替える -->
+                <v-btn v-if="showViewModeToggle"
+                    variant="text"
+                    class="recorded-program-list__view-mode"
+                    :title="is_grid_view ? 'リスト表示に切り替える' : 'グリッド表示に切り替える'"
+                    @click="is_grid_view = !is_grid_view">
+                    <Icon :icon="is_grid_view ? 'fluent:text-bullet-list-square-20-regular' : 'fluent:grid-20-regular'"
+                        width="21px" />
+                </v-btn>
             </div>
         </div>
         <slot name="after-header"></slot>
@@ -75,9 +84,11 @@
                     </div>
                 </div>
             </div>
-            <div class="recorded-program-list__grid-content">
+            <div class="recorded-program-list__grid-content"
+                :class="{'recorded-program-list__grid-content--grid-view': is_grid_view}">
                 <RecordedProgram v-for="program in displayPrograms" :key="program.id" :program="program"
                     :forMylist="forMylist" :forWatchedHistory="forWatchedHistory" :forOffline="forOffline"
+                    :forGridView="is_grid_view"
                     :offlineVideo="offlineVideos?.find(video => video.video_id === program.id) ?? null"
                     :offlineDownloadJob="getOfflineDownloadJob(program.id)"
                     @deleted="handleProgramDeleted"
@@ -106,11 +117,20 @@ import type { IOfflineDownloadJob, IOfflineVideo } from '@/services/OfflineVideo
 
 import RecordedProgram from '@/components/Videos/RecordedProgram.vue';
 import { type IRecordedProgram, MylistSortOrder, SortOrder } from '@/services/Videos';
+import useSettingsStore from '@/stores/SettingsStore';
 import Utils from '@/utils';
 
 const router = useRouter();
 
 // Props
+// グリッド表示かどうか (端末に保存し、次回以降も同じ表示で開く)
+const is_grid_view = ref(useSettingsStore().settings.video_list_grid_view);
+
+// 切り替えたら設定へ保存する
+watch(is_grid_view, (value) => {
+    useSettingsStore().settings.video_list_grid_view = value;
+});
+
 const props = withDefaults(defineProps<{
     title: string;
     programs: IRecordedProgram[];
@@ -135,9 +155,12 @@ const props = withDefaults(defineProps<{
     forOffline?: boolean;
     offlineVideos?: IOfflineVideo[];
     offlineJobs?: IOfflineDownloadJob[];
+    /** リスト表示とグリッド表示の切り替えボタンを表示するかどうか */
+    showViewModeToggle?: boolean;
 }>(), {
     page: 1,
     sortOrder: 'desc',
+    showViewModeToggle: false,
     hideHeader: false,
     hideSort: false,
     hidePagination: false,
@@ -380,6 +403,21 @@ const getOfflineDownloadJob = (videoID: number): IOfflineDownloadJob | null => {
         .recorded-program-list__grid-content {
             height: 100%;
             transition: visibility 0.2s ease, opacity 0.2s ease;
+
+            // グリッド表示: 縦型カードを画面幅に応じて複数列並べる
+            &--grid-view {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+                gap: 16px;
+                padding: 16px;
+                height: auto;
+
+                @include smartphone-vertical {
+                    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                    gap: 10px;
+                    padding: 10px;
+                }
+            }
         }
 
         :deep(.recorded-program) {

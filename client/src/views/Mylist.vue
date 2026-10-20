@@ -19,6 +19,7 @@
                         :isLoading="is_loading"
                         :showBackButton="true"
                         :showEmptyMessage="!is_loading"
+                        :showViewModeToggle="true"
                         :emptyIcon="'ic:round-playlist-play'"
                         :emptyMessage="['あとで観たい番組を', 'マイリストに保存できます。']"
                         :emptySubMessage="['録画番組の右上にある ＋ ボタンから、', '番組をマイリストに追加できます。']"

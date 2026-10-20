@@ -1,8 +1,10 @@
 import { mount } from '@vue/test-utils';
+import { createPinia } from 'pinia';
 import { describe, expect, it } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
 import RecordedProgramList from '@/components/Videos/RecordedProgramList.vue';
+import useSettingsStore from '@/stores/SettingsStore';
 
 const router = createRouter({
     history: createMemoryHistory(),
@@ -23,7 +25,7 @@ const mountList = (props: Record<string, unknown> = {}) => {
             ...props,
         },
         global: {
-            plugins: [router],
+            plugins: [router, createPinia()],
             // 未解決の Vuetify コンポーネントと ripple ディレクティブの警告を抑える
             directives: { ripple: {} },
             stubs: {
@@ -69,5 +71,19 @@ describe('RecordedProgramList 空メッセージ', () => {
         expect(submessage.findAll('br')).toHaveLength(1);
         expect(submessage.findAll('*').every((el) => el.element.tagName === 'BR')).toBe(true);
         expect(submessage.text()).toContain('<script>alert(1)</script>');
+    });
+
+    it('グリッド表示の切り替え状態が一覧へ反映される', async () => {
+        const wrapper = mountList({ showViewModeToggle: true });
+
+        // 既定はリスト表示
+        expect(wrapper.find('.recorded-program-list__grid-content--grid-view').exists()).toBe(false);
+
+        // 切り替えるとグリッド表示のクラスが付く
+        await wrapper.setData({is_grid_view: true});
+        expect(wrapper.find('.recorded-program-list__grid-content--grid-view').exists()).toBe(true);
+
+        // 設定にも保存され、次回以降も同じ表示で開く
+        expect(useSettingsStore().settings.video_list_grid_view).toBe(true);
     });
 });

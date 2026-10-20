@@ -19,6 +19,7 @@
                         :isLoading="is_loading"
                         :showBackButton="true"
                         :showEmptyMessage="!is_loading"
+                        :showViewModeToggle="true"
                         :emptyIcon="'fluent:history-20-regular'"
                         :emptyMessage="'まだ視聴履歴がありません。'"
                         :emptySubMessage="['録画番組を30秒以上みると、', '視聴履歴に追加されます。']"

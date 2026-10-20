@@ -20,6 +20,7 @@
                         :isLoading="is_loading"
                         :showBackButton="true"
                         :showEmptyMessage="!is_loading"
+                        :showViewModeToggle="true"
                         @update:page="updatePage"
                         @update:sortOrder="updateSortOrder($event as SortOrder)" />
                 </div>
