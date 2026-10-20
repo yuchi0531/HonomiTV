@@ -1318,15 +1318,19 @@ class RecordedScanTask:
                 if recorded_program.recorded_video.status == 'Recorded':
                     # files_only が True の場合は、CM 区間検出・サムネイル生成・キーフレーム解析をスキップ
                     if not files_only and file_path not in self._background_tasks:
-                        # 通知が必要かどうかを判定（新規ファイルまたは Recording → Recorded の状態変化）
-                        should_notify = (
-                            len(self.config.notifications.services) > 0 and
-                            (
-                                existing_db_recorded_video_after_analyze is None or
-                                previous_recorded_video_status == 'Recording'
-                            )
+                        # 送るイベントを決める
+                        ## EDCB が録画完了を報告した場合は「録画完了」、
+                        ## それ以外で新たにファイルを見つけた場合は「新規ファイル検出」として区別する
+                        notify_event_type = self._ResolveCompletedNotificationEvent(
+                            previous_recorded_video_status,
+                            existing_db_recorded_video_after_analyze is None,
                         )
-                        task = asyncio.create_task(self.__runBackgroundAnalysis(recorded_program, should_notify))
+                        should_notify = notify_event_type is not None and len(self.config.notifications.services) > 0
+                        task = asyncio.create_task(self.__runBackgroundAnalysis(
+                            recorded_program,
+                            should_notify,
+                            notify_event_type = notify_event_type,
+                        ))
                         self._background_tasks[file_path] = task
 
                 # wait_background_analysis が True かつ files_only が False の場合のみ、バックグラウンド解析タスクが完了するまで待つ
@@ -1629,6 +1633,36 @@ class RecordedScanTask:
 
 
 
+    def _ResolveCompletedNotificationEvent(
+        self,
+        previous_status: Literal['Recording', 'Recorded', 'AnalysisFailed'] | None,
+        is_new_record: bool,
+    ) -> NotificationEventType | None:
+        """
+        録画が完了したときに送るイベントを決める。
+
+        EDCB などの録画バックエンドが「録画中」から「録画完了」へ遷移させた場合は
+        RecordingCompleted を送る。ファイル監視が新たにファイルを見つけただけの場合は
+        FileDetected を送り、録画完了とは区別する。
+
+        Args:
+            previous_status (Literal['Recording', 'Recorded', 'AnalysisFailed'] | None): 保存前の状態。
+            is_new_record (bool): DB に新規レコードとして保存されたかどうか。
+
+        Returns:
+            NotificationEventType | None: 送るイベント。通知しない場合は None。
+        """
+
+        # 録画中から完了へ遷移した場合は、バックエンドが録画完了を報告している
+        if previous_status == 'Recording':
+            return 'RecordingCompleted'
+        # 既に Recorded だったレコードの再解析では通知しない
+        if is_new_record is False:
+            return None
+        # 新規に見つかったファイルは「検出」として通知する
+        return 'FileDetected'
+
+
     def _hasEnabledNotificationFor(self, event_type: NotificationEventType) -> bool:
         """
         指定されたイベントを送る通知先が 1 つ以上あるかを返す
@@ -1702,7 +1736,12 @@ class RecordedScanTask:
             logging.warning(f'通知送信に失敗しました: {e}')
 
 
-    async def __runBackgroundAnalysis(self, recorded_program: schemas.RecordedProgram, should_notify: bool = False) -> None:
+    async def __runBackgroundAnalysis(
+        self,
+        recorded_program: schemas.RecordedProgram,
+        should_notify: bool = False,
+        notify_event_type: NotificationEventType | None = None,
+    ) -> None:
         """
         録画完了後のバックグラウンド解析タスク
         - サムネイル生成
@@ -1712,6 +1751,7 @@ class RecordedScanTask:
         Args:
             recorded_program (schemas.RecordedProgram): 解析対象の録画番組情報
             should_notify (bool): 解析完了後に通知を送信するかどうか
+            notify_event_type (NotificationEventType | None): 送るイベントの種類
         """
 
         # 録画ファイルのパスを anyio.Path に変換
@@ -1745,7 +1785,10 @@ class RecordedScanTask:
             # バックグラウンド解析完了後に通知を送信（サムネイル生成完了後）
             if should_notify:
                 try:
-                    await self._sendNewFileNotification(recorded_program)
+                    await self._sendNewFileNotification(
+                        recorded_program,
+                        event_type = notify_event_type or 'FileDetected',
+                    )
                 except Exception as notification_ex:
                     logging.warning(f'通知送信に失敗しました: {notification_ex}')
 

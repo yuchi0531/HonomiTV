@@ -117,6 +117,8 @@ export interface IClientSettings {
 export type NotificationEventType =
     | 'RecordingStarted'
     | 'RecordingCompleted'
+    | 'EncodeCompleted'
+    | 'FileDetected'
     | 'ReservationAdded'
     | 'ReservationDeleted';
 
@@ -168,6 +170,12 @@ export interface IServerSettings {
             // 通知するイベントの種類 (未指定の場合は録画完了のみ)
             events?: NotificationEventType[];
         }>;
+        /** Amatsukaze のエンコード完了通知設定 */
+        amatsukaze: {
+            enabled: boolean;
+            url: string;
+            poll_interval_seconds: number;
+        };
     };
 }
 
@@ -203,6 +211,11 @@ export const IServerSettingsDefault: IServerSettings = {
     },
     notifications: {
         services: [],
+        amatsukaze: {
+            enabled: false,
+            url: 'http://127.0.0.1:32769/',
+            poll_interval_seconds: 60,
+        },
     },
 };
 
