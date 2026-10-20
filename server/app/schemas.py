@@ -431,6 +431,38 @@ class Series(PydanticModel):
     created_at: datetime
     updated_at: datetime
 
+class AnnictWorkCandidate_Schema(BaseModel):
+    """Annict の作品候補 (手動紐づけ用)。"""
+
+    id: int
+    title: str
+    title_kana: str | None
+    title_en: str | None
+    episodes_count: int | None
+
+class AnnictWorkCandidates(BaseModel):
+    """Annict の作品検索結果。"""
+
+    works: list[AnnictWorkCandidate_Schema]
+
+class AnnictUnlinkedSeries(BaseModel):
+    """Annict 作品と未紐づけの Series。"""
+
+    id: int
+    title: str
+    annict_work_id: int | None
+    annict_work_name: str | None
+
+class AnnictUnlinkedSeriesList(BaseModel):
+    """Annict 作品と未紐づけの Series 一覧。"""
+
+    series_list: list[AnnictUnlinkedSeries]
+
+class AnnictSeriesLinkRequest(BaseModel):
+    """Series と Annict 作品の手動紐づけリクエスト。"""
+
+    annict_work_id: int
+
 class SeriesList(BaseModel):
     total: int
     series_list: list[Series]
