@@ -100,6 +100,8 @@ export interface ILocalClientSettings extends IClientSettings {
     tv_low_latency_mode_cellular: boolean;
     tv_24fps_mode: boolean;
     tv_24fps_mode_cellular: boolean;
+    /** BS4K ライブ視聴時のパススルー方式 (TLV か HEVC の MPEG-TS か) */
+    bs4k_live_passthrough_mode: 'TLV' | 'MPEG-TS';
     video_streaming_quality: VideoStreamingQuality;
     video_streaming_quality_cellular: VideoStreamingQuality;
     video_data_saver_mode: boolean;
@@ -273,6 +275,7 @@ export const ILocalClientSettingsDefault: ILocalClientSettings = {
     tv_low_latency_mode_cellular: false,
     // テレビを 24fps モードで視聴する (Wi-Fi 回線時)  (Default: オフ) (同期無効)
     tv_24fps_mode: false,
+    bs4k_live_passthrough_mode: 'TLV',
     // テレビを 24fps モードで視聴する (モバイル回線時)  (Default: オフ) (同期無効)
     tv_24fps_mode_cellular: false,
 
@@ -431,6 +434,7 @@ export const SYNCABLE_SETTINGS_KEYS: (keyof IClientSettings)[] = [
     // tv_low_latency_mode_cellular: 同期無効
     // tv_24fps_mode: 同期無効
     // tv_24fps_mode_cellular: 同期無効
+    // bs4k_live_passthrough_mode: 同期無効
     // video_streaming_quality: 同期無効
     // video_streaming_quality_cellular: 同期無効
     // video_data_saver_mode: 同期無効

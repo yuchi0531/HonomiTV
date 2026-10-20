@@ -109,6 +109,7 @@ class ClientSettings(BaseModel):
     # video_data_saver_mode_cellular: 同期無効
     # video_24fps_mode: 同期無効
     # video_24fps_mode_cellular: 同期無効
+    # bs4k_live_passthrough_mode: 同期無効
     caption_font: str = 'Windows TV MaruGothic'
     always_border_caption_text: bool = True
     specify_caption_opacity: bool = False
