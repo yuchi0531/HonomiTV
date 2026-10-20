@@ -1,9 +1,10 @@
 from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 
 from app import logging, schemas
+from app.models.Series import Series
 from app.models.User import User
 from app.routers.UsersRouter import GetCurrentUser
 from app.utils.AnnictClient import AnnictClient
@@ -202,4 +203,148 @@ async def AnnictAccountLogoutAPI(
 
     logging.info(
         f'[AnnictRouter][AnnictAccountLogoutAPI] Unlinked Annict account. [konomitv_user_id: {current_user.id}]',
+    )
+
+@router.get(
+    '/unlinked-series',
+    summary = 'Annict 未紐づけシリーズ一覧 API',
+    response_description = 'Annict 作品と紐づいていないシリーズの一覧。',
+    response_model = schemas.AnnictUnlinkedSeriesList,
+)
+async def AnnictUnlinkedSeriesAPI(
+    current_user: Annotated[User, Depends(GetCurrentUser)],
+):
+    """
+    Annict 作品と紐づいていないシリーズの一覧を返す。
+
+    自動照合で紐づかなかったシリーズを手動で紐づけるために使う。
+    """
+
+    if current_user.annict_user_id is None or current_user.annict_access_token is None:
+        raise HTTPException(
+            status_code = status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail = 'Annict account is not linked',
+        )
+
+    # Annict へ紐づけできるジャンルの Series だけを対象にする
+    eligible_series = [
+        series for series in await Series.all()
+        if any(genre['major'] in AnnictClient.ELIGIBLE_GENRES for genre in series.genres)
+    ]
+    return schemas.AnnictUnlinkedSeriesList(
+        series_list = [
+            schemas.AnnictUnlinkedSeries(
+                id = series.id,
+                title = series.title,
+                annict_work_id = series.annict_work_id,
+                annict_work_name = series.annict_work_name,
+            )
+            for series in eligible_series
+            if series.annict_work_id is None
+        ],
+    )
+
+
+@router.get(
+    '/works/search',
+    summary = 'Annict 作品検索 API',
+    response_description = '検索条件に一致した Annict の作品一覧。',
+    response_model = schemas.AnnictWorkCandidates,
+)
+async def AnnictWorkSearchAPI(
+    current_user: Annotated[User, Depends(GetCurrentUser)],
+    query: Annotated[str, Query(min_length=1, description='検索する作品タイトル。')],
+):
+    """
+    Annict に登録されている作品をタイトルで検索する。
+
+    手動紐づけの候補を選ぶために使う。
+    """
+
+    if current_user.annict_access_token is None:
+        raise HTTPException(
+            status_code = status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail = 'Annict account is not linked',
+        )
+
+    access_token = current_user.decryptAnnictAccessToken()
+    try:
+        works = await AnnictClient.searchWorksByTitle(access_token, query)
+    except (httpx.HTTPError, ValueError) as ex:
+        logging.warning('[AnnictRouter][AnnictWorkSearchAPI] Failed to search Annict works.', exc_info=ex)
+        raise HTTPException(
+            status_code = status.HTTP_502_BAD_GATEWAY,
+            detail = 'Failed to search Annict works',
+        ) from ex
+
+    # 詳細 (話数など) は検索結果に含まれないため、タイトルだけで返す
+    return schemas.AnnictWorkCandidates(
+        works = [
+            schemas.AnnictWorkCandidate_Schema(
+                id = work['id'],
+                title = (work['titles'] or [''])[0],
+                title_kana = (work['titles'] or [None, None, None])[2],
+                title_en = (work['titles'] or [None, None])[1],
+                episodes_count = None,
+            )
+            for work in works
+        ],
+    )
+
+
+@router.put(
+    '/series/{series_id}/link',
+    summary = 'Annict 作品手動紐づけ API',
+    status_code = status.HTTP_204_NO_CONTENT,
+)
+async def AnnictSeriesLinkAPI(
+    current_user: Annotated[User, Depends(GetCurrentUser)],
+    series_id: Annotated[int, Path(description='シリーズ番組の ID 。')],
+    link_request: Annotated[schemas.AnnictSeriesLinkRequest, Body(description='紐づける Annict 作品の ID 。')],
+):
+    """
+    シリーズを Annict 作品へ手動で紐づける。
+
+    自動照合で紐づかなかったシリーズを、利用者が明示的に指定するために使う。
+    """
+
+    if current_user.annict_access_token is None:
+        raise HTTPException(
+            status_code = status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail = 'Annict account is not linked',
+        )
+
+    series = await Series.get_or_none(id=series_id)
+    if series is None:
+        raise HTTPException(
+            status_code = status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail = 'Specified series_id was not found',
+        )
+
+    # Annict 作品 ID は一意なので、同じ作品に複数の Series が紐づかないよう確認する
+    conflict = await Series.get_or_none(annict_work_id=link_request.annict_work_id)
+    if conflict is not None and conflict.id != series.id:
+        raise HTTPException(
+            status_code = status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail = 'Specified Annict work is already linked to another series',
+        )
+
+    # 作品名を取得して保存する (取得できなくても ID だけで紐づけは成立する)
+    access_token = current_user.decryptAnnictAccessToken()
+    work_name = series.title
+    try:
+        works = await AnnictClient.searchWorksByTitle(access_token, series.title)
+        matched = next((work for work in works if work['id'] == link_request.annict_work_id), None)
+        if matched is not None and len(matched['titles']) > 0:
+            work_name = matched['titles'][0]
+    except (httpx.HTTPError, ValueError) as ex:
+        # 作品名が取れなくても紐づけ自体は行う
+        logging.warning('[AnnictRouter][AnnictSeriesLinkAPI] Failed to resolve the work title.', exc_info=ex)
+
+    series.annict_work_id = link_request.annict_work_id
+    series.annict_work_name = work_name
+    await series.save(update_fields=['annict_work_id', 'annict_work_name'])
+    logging.info(
+        f'[AnnictRouter][AnnictSeriesLinkAPI] Linked series to Annict work. '
+        f'[series_id: {series.id}, annict_work_id: {link_request.annict_work_id}]',
     )

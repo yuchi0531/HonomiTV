@@ -7,6 +7,23 @@ export interface IAnnictAuthRequest {
     access_token: string;
 }
 
+/** Annict 作品と紐づいていないシリーズを表すインターフェイス */
+export interface IAnnictUnlinkedSeries {
+    id: number;
+    title: string;
+    annict_work_id: number | null;
+    annict_work_name: string | null;
+}
+
+/** Annict の作品候補を表すインターフェイス */
+export interface IAnnictWorkCandidate {
+    id: number;
+    title: string;
+    title_kana: string | null;
+    title_en: string | null;
+    episodes_count: number | null;
+}
+
 class Annict {
 
     /**
@@ -69,6 +86,70 @@ class Annict {
         // エラー処理
         if (response.type === 'error') {
             APIClient.showGenericError(response, 'Annict アカウントとの連携を解除できませんでした。');
+            return false;
+        }
+
+        return true;
+    }
+
+
+    /**
+     * Annict 作品と紐づいていないシリーズの一覧を取得する
+     * @returns 未紐づけのシリーズ一覧 (取得できなかった場合は null)
+     */
+    static async fetchUnlinkedSeries(): Promise<IAnnictUnlinkedSeries[] | null> {
+
+        // API リクエストを実行
+        const response = await APIClient.get<{series_list: IAnnictUnlinkedSeries[]}>('/annict/unlinked-series');
+
+        // エラー処理
+        if (response.type === 'error') {
+            APIClient.showGenericError(response, 'Annict と未連携のシリーズを取得できませんでした。');
+            return null;
+        }
+
+        return response.data.series_list;
+    }
+
+
+    /**
+     * Annict に登録されている作品をタイトルで検索する
+     * @param query 検索する作品タイトル
+     * @returns 検索結果の作品一覧 (取得できなかった場合は null)
+     */
+    static async searchWorks(query: string): Promise<IAnnictWorkCandidate[] | null> {
+
+        // API リクエストを実行
+        const response = await APIClient.get<{works: IAnnictWorkCandidate[]}>('/annict/works/search', {params: {query}});
+
+        // エラー処理
+        if (response.type === 'error') {
+            APIClient.showGenericError(response, 'Annict の作品を検索できませんでした。');
+            return null;
+        }
+
+        return response.data.works;
+    }
+
+
+    /**
+     * シリーズを Annict 作品へ手動で紐づける
+     * @param series_id シリーズ番組の ID
+     * @param annict_work_id 紐づける Annict 作品の ID
+     * @returns 紐づけに成功した場合は true、失敗した場合は false
+     */
+    static async linkSeries(series_id: number, annict_work_id: number): Promise<boolean> {
+
+        // API リクエストを実行
+        const response = await APIClient.put(`/annict/series/${series_id}/link`, {annict_work_id});
+
+        // エラー処理
+        if (response.type === 'error') {
+            if (response.data.detail === 'Specified Annict work is already linked to another series') {
+                Message.error('この Annict 作品は既に別のシリーズに紐づいています。');
+                return false;
+            }
+            APIClient.showGenericError(response, 'Annict 作品との紐づけに失敗しました。');
             return false;
         }
 
