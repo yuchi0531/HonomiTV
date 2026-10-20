@@ -22,6 +22,25 @@ export function buildLiveOriginalMPEG2Quality(apiBaseURL: string, displayChannel
 
 
 /**
+ * ライブ視聴向けの HEVC パススルー画質を構築する。
+ *
+ * dantto4k などで H.265 へ変換済みの MPEG-TS を、再エンコードせずに再生する。
+ * MMT/TLV ではなく MPEG-TS で届く構成の BS4K チャンネルで使う。
+ *
+ * @param apiBaseURL KonomiTV API のベース URL
+ * @param displayChannelID 表示用チャンネル ID
+ * @returns DPlayer に渡す mpegts 画質
+ */
+export function buildLiveOriginalHEVCQuality(apiBaseURL: string, displayChannelID: string): DPlayerType.VideoQuality {
+    return {
+        name: 'Original (HEVC)',
+        type: 'mpegts',
+        url: `${apiBaseURL}/streams/live/${displayChannelID}/copy/mpegts`,
+    };
+}
+
+
+/**
  * 録画再生向けの原始 MPEG-2 TS 画質を構築する。
  *
  * @param apiBaseURL KonomiTV API のベース URL

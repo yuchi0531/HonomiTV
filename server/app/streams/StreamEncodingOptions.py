@@ -203,9 +203,17 @@ def SplitLiveQualityAndEncodingOptions(quality: str) -> LiveStreamQualityWithOpt
             encoding_options = StreamEncodingOptions(),
         )
 
+    # copy は dantto4k などで H.265 へ変換済みの MPEG-TS を再エンコードせず流すライブ専用品質
+    ## BS4K の生ストリームが MPEG-TS (HEVC) で届く構成で、TLV パススルーの代わりに使う
+    if quality == 'copy':
+        return LiveStreamQualityWithOptions(
+            quality = 'copy',
+            encoding_options = StreamEncodingOptions(),
+        )
+
     # 通常のライブ品質は録画配信と同じ分解ロジックを利用する
     stream_quality = SplitQualityAndEncodingOptions(quality)
-    if stream_quality is None or stream_quality.quality == 'copy':
+    if stream_quality is None:
         return None
 
     return LiveStreamQualityWithOptions(

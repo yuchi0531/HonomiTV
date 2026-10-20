@@ -96,6 +96,33 @@ def BuildDirectRawMMTSLiveStreamStatus() -> schemas.LiveStreamStatus:
     )
 
 
+def LooksLikeMPEGTSStream(head: bytes) -> bool:
+    """
+    ストリームの先頭バイトが MPEG-TS かどうかを判定する。
+
+    BS4K の生ストリームは通常 MMT/TLV だが、dantto4k などで MPEG-TS へ変換した構成では
+    Mirakurun が decode=0 でも MPEG-TS を返す。その場合 raw-mmts 経路では再生できないため、
+    先頭バイトから形式を見分けて呼び出し側で経路を切り替える。
+
+    Args:
+        head (bytes): ストリームの先頭バイト列。
+
+    Returns:
+        bool: MPEG-TS と判定できた場合は True。
+    """
+
+    # MPEG-TS は 188 バイト周期で 0x47 (同期バイト) が現れる
+    ## 数周期ぶん確認し、たまたま 0x47 が一致しただけの TLV を誤判定しないようにする
+    TS_PACKET_SIZE = 188
+    TS_SYNC_BYTE = 0x47
+    if len(head) < TS_PACKET_SIZE * 3:
+        return False
+    return all(
+        head[index * TS_PACKET_SIZE] == TS_SYNC_BYTE
+        for index in range(3)
+    )
+
+
 async def OpenMirakurunRawMMTSStream(display_channel_id: str) -> tuple[aiohttp.ClientSession, aiohttp.ClientResponse]:
     """
     Mirakurun の BS4K Raw MMTS ストリームを decode=0 で直接開く。
@@ -225,6 +252,72 @@ async def GenerateMirakurunRawMMTSStream(
         await session.close()
 
 
+# 実際のストリーム形式を判定した結果のキャッシュ
+## チャンネルごとに形式は通常変わらないため、短時間は再判定しない
+_detected_mmt_tlv_channels: dict[str, tuple[bool, float]] = {}
+_DETECT_SAMPLE_BYTES = 188 * 8
+_DETECT_CACHE_SECONDS = 60.0
+
+
+async def DetectLiveStreamIsMMTTLV(channel: Channel) -> bool:
+    """
+    BS4K チャンネルの実際のストリームが MMT/TLV かどうかを判定する。
+
+    dantto4k などで MPEG-TS へ変換した構成では、Mirakurun が decode=0 でも MPEG-TS を返す。
+    その場合 raw-mmts (TLV パススルー) は再生できないため、先頭バイトから形式を見分ける。
+
+    Args:
+        channel (Channel): 判定対象の BS4K チャンネル。
+
+    Returns:
+        bool: MMT/TLV と判定した場合は True。判定できない場合は False。
+    """
+
+    now = time.time()
+    cached = _detected_mmt_tlv_channels.get(channel.id)
+    if cached is not None and now - cached[1] < _DETECT_CACHE_SECONDS:
+        return cached[0]
+
+    # Mirakurun / mirakc 以外のバックエンドでは raw-mmts 自体が使えない
+    if GetBackendForReceiving() != 'Mirakurun':
+        return False
+
+    mirakurun_service_id = int(str(channel.network_id).zfill(5) + str(channel.service_id).zfill(5))
+    session = aiohttp.ClientSession()
+    try:
+        response = await session.get(
+            url = GetMirakurunAPIEndpointURL(f'/api/services/{mirakurun_service_id}/stream?decode=0'),
+            headers = {**API_REQUEST_HEADERS, 'X-Mirakurun-Priority': '0'},
+            timeout = aiohttp.ClientTimeout(total=10, connect=5, sock_connect=5, sock_read=5),
+        )
+        if response.status != 200:
+            logging.warning(
+                f'[LiveStreamsRouter][DetectLiveStreamIsMMTTLV] Mirakurun returned HTTP {response.status}. '
+                f'[display_channel_id: {channel.display_channel_id}]'
+            )
+            return False
+        # 先頭の数パケットだけ読んで判定する
+        head = await response.content.read(_DETECT_SAMPLE_BYTES)
+    except (TimeoutError, aiohttp.ClientError) as ex:
+        logging.warning(
+            f'[LiveStreamsRouter][DetectLiveStreamIsMMTTLV] Failed to read the stream. '
+            f'[display_channel_id: {channel.display_channel_id}]',
+            exc_info = ex,
+        )
+        return False
+    finally:
+        await session.close()
+
+    # MPEG-TS の同期バイトが並んでいれば MPEG-TS と判断し、MMT/TLV ではないとする
+    is_mmt_tlv = LooksLikeMPEGTSStream(head) is False
+    _detected_mmt_tlv_channels[channel.id] = (is_mmt_tlv, now)
+    logging.info(
+        f'[LiveStreamsRouter][DetectLiveStreamIsMMTTLV] Detected stream format. '
+        f'[display_channel_id: {channel.display_channel_id}, is_mmt_tlv: {is_mmt_tlv}]'
+    )
+    return is_mmt_tlv
+
+
 @router.get(
     '',
     summary = 'ライブストリーム一覧 API',
@@ -318,6 +411,31 @@ async def LiveStreamSessionResourceAPI(
         return StreamingResponse(stream, media_type=media_type, headers={'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no'})
     except JellyfinError as error:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(error)) from error
+
+
+@router.get(
+    '/{display_channel_id}/passthrough-info',
+    summary = 'ライブ パススルー情報 API',
+    response_description = 'BS4K チャンネルで利用できるパススルー再生の情報。',
+    response_model = schemas.LiveStreamPassthroughInfo,
+)
+async def LivePassthroughInfoAPI(
+    display_channel_id: Annotated[str, Depends(ValidateChannelID)],
+):
+    """
+    BS4K チャンネルで利用できるパススルー再生の方式を返す。<br>
+    dantto4k などで MPEG-TS へ変換した構成では TLV パススルーが使えないため、
+    実際のストリーム形式を判定してクライアントへ伝える。
+    """
+
+    channel = await Channel.filter(display_channel_id=display_channel_id).get_or_none()
+    # BS4K 以外では TLV パススルー itself が存在しないため、常に False を返す
+    if channel is None or channel.type != 'BS4K':
+        return schemas.LiveStreamPassthroughInfo(is_mmt_tlv=False)
+
+    return schemas.LiveStreamPassthroughInfo(
+        is_mmt_tlv = await DetectLiveStreamIsMMTTLV(channel),
+    )
 
 
 @router.get(
