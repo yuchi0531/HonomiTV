@@ -397,3 +397,139 @@ class AnnictSeriesLinkTest(unittest.IsolatedAsyncioTestCase):
         await AnnictEpisodeRecord.create(user=user, annict_episode_id=501, annict_record_id=1)
         with self.assertRaises(IntegrityError):
             await AnnictEpisodeRecord.create(user=user, annict_episode_id=501, annict_record_id=2)
+
+
+class AnnictTitleSearchFallbackTest(unittest.IsolatedAsyncioTestCase):
+    """マイリストに無い作品をタイトル検索で照合する挙動を検証する。"""
+
+    async def asyncSetUp(self) -> None:
+        """テスト専用のメモリ内 SQLite を用意する。"""
+
+        from typing import cast
+
+        from tortoise import Tortoise
+
+        from app.constants import DATABASE_CONFIG
+
+        await Tortoise.init(
+            db_url = 'sqlite::memory:',
+            modules = {'models': cast(list[str], DATABASE_CONFIG['apps']['models']['models'])},
+        )
+        await Tortoise.generate_schemas()
+
+    async def asyncTearDown(self) -> None:
+        """メモリ内 SQLite 接続を破棄する。"""
+
+        from tortoise import Tortoise
+
+        await Tortoise.close_connections()
+
+    async def test_links_work_found_only_by_title_search(self) -> None:
+        """マイリストに無くても、タイトル検索で一意に決まる作品へ紐付ける。
+
+        「見てる」へ入れていない作品を一話だけ見た場合でも記録できるようにするため。
+        """
+
+        series = await Series.create(
+            normalized_title='ゆるきゃん',
+            title='ゆるキャン△',
+            description='',
+            genres=[{'major': 'アニメ・特撮', 'minor': ''}],
+        )
+        user = MagicMock()
+        user.decryptAnnictAccessToken.return_value = 'token'
+
+        with (
+            # マイリストには何も無い
+            patch.object(AnnictClient, 'fetchCandidateWorks', new=AsyncMock(return_value=[])),
+            # Annict 全体の検索では見つかる
+            patch.object(
+                AnnictClient,
+                'searchWorksByTitle',
+                new=AsyncMock(return_value=[Work(7777, 'ゆるキャン△')]),
+            ) as search,
+        ):
+            matched = await AnnictClient.syncUserWorks(user)
+
+        self.assertEqual(matched, 1)
+        search.assert_awaited_once()
+        refreshed = await Series.get(id=series.id)
+        self.assertEqual(refreshed.annict_work_id, 7777)
+
+    async def test_does_not_link_when_search_is_ambiguous(self) -> None:
+        """検索結果が複数あり一意に決められない場合は紐付けない。"""
+
+        series = await Series.create(
+            normalized_title='あいまい',
+            title='あいまいな作品',
+            description='',
+            genres=[{'major': 'アニメ・特撮', 'minor': ''}],
+        )
+        user = MagicMock()
+        user.decryptAnnictAccessToken.return_value = 'token'
+
+        with (
+            patch.object(AnnictClient, 'fetchCandidateWorks', new=AsyncMock(return_value=[])),
+            # 紛らわしい候補が並ぶ
+            patch.object(
+                AnnictClient,
+                'searchWorksByTitle',
+                new=AsyncMock(return_value=[Work(1, 'あいまいな作品'), Work(2, 'あいまいな作品')]),
+            ),
+        ):
+            matched = await AnnictClient.syncUserWorks(user)
+
+        self.assertEqual(matched, 0)
+        refreshed = await Series.get(id=series.id)
+        self.assertIsNone(refreshed.annict_work_id)
+
+    async def test_title_search_result_is_reused_for_same_title(self) -> None:
+        """同じタイトルの Series が複数あっても検索 API は 1 回だけ呼ぶ。"""
+
+        for index in range(3):
+            await Series.create(
+                normalized_title=f'ゆるきゃん{index}',
+                title='ゆるキャン△',
+                description='',
+                genres=[{'major': 'アニメ・特撮', 'minor': ''}],
+            )
+        user = MagicMock()
+        user.decryptAnnictAccessToken.return_value = 'token'
+
+        with (
+            patch.object(AnnictClient, 'fetchCandidateWorks', new=AsyncMock(return_value=[])),
+            patch.object(
+                AnnictClient,
+                'searchWorksByTitle',
+                new=AsyncMock(return_value=[Work(7777, 'ゆるキャン△')]),
+            ) as search,
+        ):
+            await AnnictClient.syncUserWorks(user)
+
+        # タイトル単位でメモ化されるため 1 回に抑えられる
+        search.assert_awaited_once()
+
+    async def test_title_search_is_capped_per_sync(self) -> None:
+        """タイトル検索の回数には上限があり、未照合作品が多くても API を叩き続けない。"""
+
+        for index in range(30):
+            await Series.create(
+                normalized_title=f'作品{index}',
+                title=f'作品{index}',
+                description='',
+                genres=[{'major': 'アニメ・特撮', 'minor': ''}],
+            )
+        user = MagicMock()
+        user.decryptAnnictAccessToken.return_value = 'token'
+
+        with (
+            patch.object(AnnictClient, 'fetchCandidateWorks', new=AsyncMock(return_value=[])),
+            patch.object(
+                AnnictClient,
+                'searchWorksByTitle',
+                new=AsyncMock(return_value=[]),
+            ) as search,
+        ):
+            await AnnictClient.syncUserWorks(user)
+
+        self.assertEqual(search.await_count, AnnictClient.MAX_TITLE_SEARCHES_PER_SYNC)
