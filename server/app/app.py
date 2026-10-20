@@ -47,6 +47,7 @@ from app.routers import (
     VideoStreamsRouter,
 )
 from app.streams.LiveStream import LiveStream
+from app.utils.AmatsukazeClient import AmatsukazeMonitor
 from app.utils.AnnictClient import AnnictClient
 from app.utils.BangumiClient import BangumiClient
 from app.utils.BangumiTokenManager import BangumiTokenManager
@@ -280,6 +281,33 @@ async def Startup():
     ## 録画中ファイルはバックエンドしか状態を知らないため、フォルダ監視だけでは追いかけ再生に反映できない。
     if CONFIG.general.backend != 'Mirakurun':
         await recorded_scan_task.startBackendRecordingSync()
+
+# Amatsukaze のエンコード完了を監視する
+## Amatsukaze 側の設定で有効化されている場合のみ、キューを定期的に確認する
+amatsukaze_monitor: AmatsukazeMonitor | None = None
+# 監視タスクへの強参照
+## GC でタスクが破棄されて監視が止まることを防ぐ
+AMATSUKAZE_MONITOR_TASKS: set[asyncio.Task[None]] = set()
+@app.on_event('startup')
+async def StartAmatsukazeMonitor():
+    global amatsukaze_monitor
+
+    if CONFIG.notifications.amatsukaze.enabled is False:
+        return
+    amatsukaze_monitor = AmatsukazeMonitor()
+    # 録画処理を妨げないよう、バックグラウンドタスクとして開始する
+    ## ref: https://docs.astral.sh/ruff/rules/asyncio-dangling-task/
+    task = asyncio.create_task(amatsukaze_monitor.run())
+    AMATSUKAZE_MONITOR_TASKS.add(task)
+    task.add_done_callback(AMATSUKAZE_MONITOR_TASKS.discard)
+    logging.info('[app] Amatsukaze monitor started.')
+
+
+@app.on_event('shutdown')
+async def StopAmatsukazeMonitor():
+    if amatsukaze_monitor is not None:
+        amatsukaze_monitor.stop()
+
 
 # サーバー設定で指定された時間 (デフォルト: 15分) ごとに1回、チャンネル情報と番組情報を更新する
 # チャンネル情報は頻繁に変わるわけではないけど、手動で再起動しなくても自動で変更が適用されてほしい

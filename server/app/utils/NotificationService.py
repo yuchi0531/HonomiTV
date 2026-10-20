@@ -10,6 +10,7 @@ import httpx
 
 from app import logging, schemas
 from app.config import NotificationEventType, ServerSettingsNotificationService
+from app.utils.AmatsukazeClient import AmatsukazeEncodedItem
 from app.utils.RecordingQuality import RecordingQuality
 
 
@@ -29,6 +30,8 @@ class NotificationEvent:
     reservation: schemas.Reservation | None
     # 録画品質の統計 (EDCB からのみ取得できる。取得できない場合は None)
     recording_quality: RecordingQuality | None
+    # エンコード完了イベントの対象 (Amatsukaze 由来。それ以外では None)
+    encode_info: AmatsukazeEncodedItem | None
 
     def __init__(
         self,
@@ -36,6 +39,7 @@ class NotificationEvent:
         recorded_program: schemas.RecordedProgram | None = None,
         reservation: schemas.Reservation | None = None,
         recording_quality: RecordingQuality | None = None,
+        encode_info: AmatsukazeEncodedItem | None = None,
     ):
         """
         通知イベントを初期化する。
@@ -45,19 +49,21 @@ class NotificationEvent:
             recorded_program (schemas.RecordedProgram | None): 録画イベントの対象。
             reservation (schemas.Reservation | None): 予約イベントの対象。
             recording_quality (RecordingQuality | None): 録画品質の統計。
+            encode_info (AmatsukazeEncodedItem | None): エンコード完了イベントの対象。
         """
 
         self.type = type
         self.recorded_program = recorded_program
         self.reservation = reservation
         self.recording_quality = recording_quality
+        self.encode_info = encode_info
 
     def GetQualitySummary(self) -> str | None:
         """
         録画品質を 1 行の要約文字列にする。
 
         通知先ごとに書式が異なるため、本文へ埋め込むための共通表現をここで組み立てる。
-        D / E / S はそれぞれドロップ数 / エラー数 / スクランブル数を表す。
+        D / S はそれぞれドロップ数 / スクランブル数を表す。
 
         Returns:
             str | None: 品質の要約。品質情報が無い場合は None。
@@ -66,8 +72,9 @@ class NotificationEvent:
         if self.recording_quality is None:
             return None
         quality = self.recording_quality
-        # D / E / S を並べれば状態が一目で分かるため、問題の有無にかかわらず同じ書式で出す
-        return f'📊録画品質 D {quality.drops} / E {quality.error_count} / S {quality.scrambles}'
+        # D (ドロップ) と S (スクランブル) は数値で意味が明確だが、
+        ## E (エラー) は EDCB の自由文を数えた値で意味が伝わりにくいため出さない
+        return f'📊録画品質 D {quality.drops} / S {quality.scrambles}'
 
 
 class NotificationService(ABC):
@@ -204,6 +211,32 @@ class TelegramNotificationService(NotificationService):
         return self._build_reservation_message(event.reservation, heading = '🗑 **録画予約を削除しました**')
 
 
+    def _build_encode_message(self, encode_info: AmatsukazeEncodedItem) -> str:
+        """
+        Amatsukaze のエンコード結果からメッセージ本文を構築する
+
+        Args:
+            encode_info (AmatsukazeEncodedItem): エンコード結果。
+
+        Returns:
+            str: Telegram へ送る本文。
+        """
+
+        heading = '⚠️ **エンコードに失敗しました**' if encode_info.is_failed is True else '🎬 **エンコードが完了しました**'
+        finished_at = encode_info.finished_at.strftime('%Y/%m/%d %H:%M:%S') if encode_info.finished_at is not None else '--'
+        lines = [
+            heading,
+            '',
+            '📹 **エンコード情報**',
+            f'ファイル名：{encode_info.file_name}',
+        ]
+        # 放送局名は取得できた場合だけ出す
+        if encode_info.service_name != '':
+            lines.append(f'放送局：{encode_info.service_name}')
+        lines.append(f'完了時刻：{finished_at}')
+        return '\n'.join(lines)
+
+
     def _build_reservation_message(self, reservation: schemas.Reservation, heading: str) -> str:
         """
         予約情報からメッセージ本文を構築する
@@ -300,7 +333,7 @@ class TelegramNotificationService(NotificationService):
             description = description[:200] + '...'
 
         # 録画品質は取得できた場合のみ、番組情報の直後に 1 行で添える
-        ## 要約自体が「📊録画品質 D / E / S」の形なので、ここで見出しを重ねない
+        ## 要約自体が「📊録画品質 D / S」の形なので、ここで見出しを重ねない
         quality_line = f'\n{quality_summary}\n' if quality_summary is not None else ''
 
         # メッセージを構築
@@ -507,6 +540,9 @@ class WebhookNotificationService(NotificationService):
         }
         title = '🔔 通知設定テスト' if is_test else event_titles[event.type]
 
+        # Amatsukaze のエンコード結果は録画番組ではないため、専用のペイロードを組み立てる
+        if event.encode_info is not None:
+            return self._build_encode_payload(event.encode_info, title)
         # 録画イベントは録画番組、予約イベントは予約情報からフィールドを組み立てる
         if event.recorded_program is not None:
             return self._build_recording_payload(
@@ -621,10 +657,10 @@ class WebhookNotificationService(NotificationService):
         ]
         # 録画品質は取得できた場合のみフィールドとして添える
         ## 品質は番組情報より補足的なので、チャンネル・放送時間・長さの後ろに置く
-        ## 要約には「📊録画品質」が含まれるため、フィールド名は D/E/S の内訳だけにする
+        ## 要約には「📊録画品質」が含まれるため、フィールド名は D/S の内訳だけにする
         if quality_summary is not None:
             fields.append({
-                'name': 'D / E / S',
+                'name': 'D / S',
                 'value': self._truncate(
                     quality_summary.removeprefix('📊録画品質 '),
                     self.EMBED_FIELD_VALUE_MAX_LENGTH,
@@ -691,6 +727,46 @@ class WebhookNotificationService(NotificationService):
             'embeds': [{
                 'title': title,
                 'description': description,
+                'color': self.EMBED_COLOR,
+                'fields': fields,
+                'footer': {'text': 'KonomiTV'},
+            }],
+            'allowed_mentions': {'parse': []},
+        }
+
+    def _build_encode_payload(self, encode_info: AmatsukazeEncodedItem, title: str) -> dict[str, Any]:
+        """
+        Amatsukaze のエンコード結果から Webhook へ POST する JSON を構築する
+
+        Args:
+            encode_info (AmatsukazeEncodedItem): エンコード結果。
+            title (str): Embed の見出し。
+
+        Returns:
+            dict[str, Any]: Webhook へ送信する JSON ペイロード。
+        """
+
+        finished_at = encode_info.finished_at.strftime('%Y/%m/%d %H:%M:%S') if encode_info.finished_at is not None else '--'
+        fields: list[dict[str, Any]] = [
+            {
+                'name': 'ファイル名',
+                'value': self._truncate(encode_info.file_name, self.EMBED_FIELD_VALUE_MAX_LENGTH),
+                'inline': False,
+            },
+            {'name': '完了時刻', 'value': finished_at, 'inline': True},
+        ]
+        # 放送局名は取得できた場合だけ出す
+        if encode_info.service_name != '':
+            fields.append({
+                'name': '放送局',
+                'value': self._truncate(encode_info.service_name, self.EMBED_FIELD_VALUE_MAX_LENGTH),
+                'inline': True,
+            })
+        fields = self._fit_fields_within_total_limit(fields, len(title))
+
+        return {
+            'embeds': [{
+                'title': title,
                 'color': self.EMBED_COLOR,
                 'fields': fields,
                 'footer': {'text': 'KonomiTV'},

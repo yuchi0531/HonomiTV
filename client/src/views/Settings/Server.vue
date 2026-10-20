@@ -518,6 +518,39 @@
                     <span class="ml-1">テスト通知を送信</span>
                 </v-btn>
             </div>
+            <v-divider class="mt-6"></v-divider>
+            <div class="settings__item settings__item--switch">
+                <label class="settings__item-heading" for="amatsukaze_enabled">Amatsukaze のエンコード完了を通知する</label>
+                <label class="settings__item-label" for="amatsukaze_enabled">
+                    オンにすると、Amatsukaze のキューを定期的に確認し、エンコードが完了した録画を通知します。デフォルトはオフです。<br>
+                    録画完了通知とは別のイベントとして扱われます。失敗したエンコードも通知されます。<br>
+                </label>
+                <v-switch class="settings__item-switch" color="primary" id="amatsukaze_enabled" hide-details
+                    v-model="server_settings.notifications.amatsukaze.enabled">
+                </v-switch>
+            </div>
+            <div class="settings__item">
+                <div class="settings__item-heading">Amatsukaze のアドレス</div>
+                <div class="settings__item-label">
+                    Amatsukaze の Web UI のアドレスを指定します (例: http://192.168.100.110:32769/)。<br>
+                </div>
+                <v-text-field class="settings__item-form" color="primary" variant="outlined" hide-details
+                    :density="is_form_dense ? 'compact' : 'default'"
+                    placeholder="http://192.168.100.110:32769/"
+                    v-model="server_settings.notifications.amatsukaze.url">
+                </v-text-field>
+            </div>
+            <div class="settings__item">
+                <div class="settings__item-heading">確認間隔 (秒)</div>
+                <div class="settings__item-label">
+                    キューの確認間隔を秒単位で指定します。デフォルトは 60 秒です。<br>
+                </div>
+                <v-text-field class="settings__item-form" color="primary" variant="outlined" hide-details
+                    :density="is_form_dense ? 'compact' : 'default'"
+                    type="number" min="10"
+                    v-model.number="server_settings.notifications.amatsukaze.poll_interval_seconds">
+                </v-text-field>
+            </div>
             <v-btn class="settings__save-button bg-secondary mt-6" variant="flat" @click="updateServerSettings()">
                 <Icon icon="fluent:save-16-filled" class="mr-2" height="23px" />サーバー設定を更新
             </v-btn>
@@ -863,7 +896,6 @@ const notification_event_options = [
     {title: '録画完了 (EDCB など)', value: 'RecordingCompleted'},
     {title: 'エンコード完了 (Amatsukaze)', value: 'EncodeCompleted'},
     {title: '新規ファイル検出', value: 'FileDetected'},
-    {title: 'ファイル削除', value: 'FileDeleted'},
     {title: '録画予約の追加', value: 'ReservationAdded'},
     {title: '録画予約の削除', value: 'ReservationDeleted'},
 ] as const;

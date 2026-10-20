@@ -4,7 +4,7 @@ import json
 import unittest
 from datetime import datetime
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import anyio
 import httpx
@@ -463,7 +463,7 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn('検出', title)
 
     async def test_includes_recording_quality_in_webhook_field(self) -> None:
-        """録画品質が渡された場合は Embed のフィールドに D / E / S を載せる。"""
+        """録画品質が渡された場合は Embed のフィールドに D / S を載せる。"""
 
         service = WebhookNotificationService(self._config(events=['RecordingCompleted']))
 
@@ -475,8 +475,8 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
 
         embed = RecordingHTTPClient.requests[0]['json']['embeds'][0]
         fields = {field['name']: field['value'] for field in embed['fields']}
-        # D / E / S の順に、記号と数値だけで並べる
-        self.assertEqual(fields['D / E / S'], 'D 12 / E 0 / S 3')
+        # D (ドロップ) と S (スクランブル) を記号と数値だけで並べる
+        self.assertEqual(fields['D / S'], 'D 12 / S 3')
         # 番組情報のフィールドは維持されている
         self.assertIn('チャンネル', fields)
         self.assertIn('長さ', fields)
@@ -495,7 +495,7 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
         embed = RecordingHTTPClient.requests[0]['json']['embeds'][0]
         fields = {field['name']: field['value'] for field in embed['fields']}
         # 問題が無い場合も同じ書式で 0 を並べる
-        self.assertEqual(fields['D / E / S'], 'D 0 / E 0 / S 0')
+        self.assertEqual(fields['D / S'], 'D 0 / S 0')
 
     async def test_omits_quality_field_when_unavailable(self) -> None:
         """品質情報が取得できない場合はフィールド自体を出さない。"""
@@ -506,7 +506,7 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
 
         embed = RecordingHTTPClient.requests[0]['json']['embeds'][0]
         field_names = {field['name'] for field in embed['fields']}
-        self.assertNotIn('D / E / S', field_names)
+        self.assertNotIn('D / S', field_names)
 
     async def test_quality_field_is_truncated_to_discord_limit(self) -> None:
         """エラー情報が長くても Embed のフィールド上限を超えない。"""
@@ -520,7 +520,7 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
         ))
 
         embed = RecordingHTTPClient.requests[0]['json']['embeds'][0]
-        quality_value = next(field['value'] for field in embed['fields'] if field['name'] == 'D / E / S')
+        quality_value = next(field['value'] for field in embed['fields'] if field['name'] == 'D / S')
         # Discord のフィールド上限 (1024 文字) を超えない
         self.assertLessEqual(len(quality_value), 1024)
     async def test_file_deleted_is_separate_from_file_detected(self) -> None:
@@ -744,3 +744,124 @@ class NotificationManagerTest(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(Exception):
             await manager.send_test(BuildRecordedProgram())
+
+
+class AmatsukazeNotificationTest(unittest.IsolatedAsyncioTestCase):
+    """Amatsukaze のエンコード完了通知を検証する。"""
+
+    async def asyncSetUp(self) -> None:
+        """送信内容だけを記録する HTTP クライアントへ差し替える。"""
+
+        RecordingHTTPClient.requests.clear()
+        RecordingHTTPClient.status_code = 204
+        self.patcher = patch(
+            'app.utils.NotificationService.httpx.AsyncClient',
+            RecordingHTTPClient,
+        )
+        self.patcher.start()
+
+    async def asyncTearDown(self) -> None:
+        """差し替えた HTTP クライアントを元に戻す。"""
+
+        self.patcher.stop()
+
+    def test_completed_items_are_parsed(self) -> None:
+        """完了したアイテムだけを通知対象として取り出す。"""
+
+        from app.utils.AmatsukazeClient import ParseAmatsukazeItems
+
+        items = [
+            {'id': 1, 'state': 'Complete', 'fileName': 'a.ts', 'encodeFinish': '2026-08-20T03:47:46.4606755+09:00'},
+            {'id': 2, 'state': 'Encoding', 'fileName': 'b.ts'},
+            {'id': 3, 'state': 'Failed', 'fileName': 'c.ts'},
+            {'id': 4, 'state': 'Pending', 'fileName': 'd.ts'},
+        ]
+        parsed = ParseAmatsukazeItems(items)
+
+        self.assertEqual(set(parsed.keys()), {1, 3})
+        self.assertFalse(parsed[1].is_failed)
+        self.assertTrue(parsed[3].is_failed)
+        # .NET 由来の 7 桁小数秒も解釈できる
+        self.assertIsNotNone(parsed[1].finished_at)
+
+    async def test_existing_items_are_not_notified_on_first_poll(self) -> None:
+        """起動直後の初回取得では、既存の完了済みアイテムをまとめて通知しない。"""
+
+        from app.utils.AmatsukazeClient import AmatsukazeMonitor
+
+        monitor = AmatsukazeMonitor()
+        raw_items = [
+            {'id': 1, 'state': 'Complete', 'fileName': 'a.ts'},
+            {'id': 2, 'state': 'Complete', 'fileName': 'b.ts'},
+        ]
+        with patch(
+            'app.utils.AmatsukazeClient.FetchAmatsukazeQueue',
+            AsyncMock(return_value = raw_items),
+        ):
+            first = await monitor.PollOnce()
+            # 2 回目以降は新規分だけ返る
+            raw_items.append({'id': 3, 'state': 'Complete', 'fileName': 'c.ts'})
+            second = await monitor.PollOnce()
+
+        self.assertEqual(first, [])
+        self.assertEqual([item.item_id for item in second], [3])
+
+    async def test_encode_notification_is_sent_for_completed_item(self) -> None:
+        """エンコード完了は録画完了とは別の見出しで通知する。"""
+
+        from app.utils.AmatsukazeClient import AmatsukazeEncodedItem
+
+        service = WebhookNotificationService(ServerSettingsNotificationService(
+            type='Webhook', enabled=True, webhook_url='https://discord.com/api/webhooks/1234/token',
+            events=['EncodeCompleted'],
+        ))
+        encode_info = AmatsukazeEncodedItem(
+            item_id = 1,
+            source_path = '/rec/a.ts',
+            output_dir = '/encoded',
+            file_name = 'a.ts',
+            service_name = 'テスト放送',
+            finished_at = None,
+            is_failed = False,
+        )
+
+        await service.send_event(NotificationEvent('EncodeCompleted', encode_info = encode_info))
+
+        embed = RecordingHTTPClient.requests[0]['json']['embeds'][0]
+        self.assertEqual(embed['title'], '🎬 エンコードが完了しました')
+        fields = {field['name']: field['value'] for field in embed['fields']}
+        self.assertEqual(fields['ファイル名'], 'a.ts')
+        self.assertEqual(fields['放送局'], 'テスト放送')
+
+    async def test_failed_encode_is_reported_as_failure(self) -> None:
+        """失敗したエンコードは失敗として通知する。"""
+
+        from app.utils.AmatsukazeClient import AmatsukazeEncodedItem
+
+        service = WebhookNotificationService(ServerSettingsNotificationService(
+            type='Webhook', enabled=True, webhook_url='https://discord.com/api/webhooks/1234/token',
+            events=['EncodeCompleted'],
+        ))
+        encode_info = AmatsukazeEncodedItem(
+            item_id = 2, source_path = '/rec/b.ts', output_dir = '/encoded', file_name = 'b.ts',
+            service_name = '', finished_at = None, is_failed = True,
+        )
+
+        await service.send_event(NotificationEvent('EncodeCompleted', encode_info = encode_info))
+
+        embed = RecordingHTTPClient.requests[0]['json']['embeds'][0]
+        self.assertEqual(embed['title'], '⚠️ エンコードに失敗しました')
+
+    async def test_file_detected_is_separate_from_recording_completed(self) -> None:
+        """新規ファイル検出は録画完了とは別の見出しになる。"""
+
+        service = WebhookNotificationService(ServerSettingsNotificationService(
+            type='Webhook', enabled=True, webhook_url='https://discord.com/api/webhooks/1234/token',
+            events=['FileDetected', 'RecordingCompleted'],
+        ))
+
+        await service.send_event(NotificationEvent('FileDetected', recorded_program = BuildRecordedProgram()))
+        await service.send_event(NotificationEvent('RecordingCompleted', recorded_program = BuildRecordedProgram()))
+
+        titles = [request['json']['embeds'][0]['title'] for request in RecordingHTTPClient.requests]
+        self.assertEqual(titles, ['📁 新しいファイルを検出しました', '✅ 録画が完了しました'])

@@ -140,6 +140,18 @@ capture:
 
 # =============================== 通知設定 ===============================
 notifications:
+
+    # Amatsukaze のエンコード完了通知
+    # Amatsukaze のキューを定期的に確認し、エンコードが完了した録画を通知します。
+    # 録画完了通知とは別のイベント (EncodeCompleted) として扱われます。
+    amatsukaze:
+
+        enabled: false
+        # Amatsukaze の Web UI のアドレス
+        url: 'http://127.0.0.1:32769/'
+        # キューの確認間隔 (秒)
+        poll_interval_seconds: 60
+
     # 通知サービスのリスト（複数設定可能）
     services: [
         # 通知するイベントの種類 (events) には以下を指定できます。
@@ -147,7 +159,6 @@ notifications:
         #   RecordingCompleted : 録画完了 (EDCB などが録画完了を報告したとき / 既定値)
         #   EncodeCompleted    : エンコード完了 (Amatsukaze のキューから検知)
         #   FileDetected       : 新規ファイル検出 (監視で新たにファイルを見つけたとき)
-        #   FileDeleted        : 録画ファイルの削除
         #   ReservationAdded   : 録画予約の追加
         #   ReservationDeleted : 録画予約の削除
         # events を省略した場合は RecordingCompleted のみが通知されます (従来と同じ挙動)。

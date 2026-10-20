@@ -442,8 +442,22 @@ class ServerSettingsNotificationService(BaseModel):
     events: list[NotificationEventType] = Field(default_factory=_default_notification_events)
 
 
+class AmatsukazeSettings(BaseModel):
+    """Amatsukaze のエンコード完了通知を受け取るためのサーバー設定。"""
+
+    # Amatsukaze の Web UI / API のベース URL
+    ## 例: http://192.168.100.110:32769/
+    enabled: bool = False
+    url: Annotated[Url, UrlConstraints(allowed_schemes=['http', 'https'])] = Url('http://127.0.0.1:32769/')
+    # キューの確認間隔 (秒)
+    ## エンコードは数分単位で終わるため、短すぎる間隔は不要
+    poll_interval_seconds: Annotated[int, PositiveInt] = 60
+
+
 class _ServerSettingsNotifications(BaseModel):
     services: list[ServerSettingsNotificationService] = []
+    # Amatsukaze のエンコード完了通知設定
+    amatsukaze: AmatsukazeSettings = AmatsukazeSettings()
 
 
 class JellyfinSettings(BaseModel):
