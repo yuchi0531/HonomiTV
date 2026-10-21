@@ -33,6 +33,7 @@
                         :hidePagination="true"
                         :showMoreButton="true"
                         :showSearch="true"
+                        :showViewModeToggle="true"
                         :isLoading="is_loading"
                         :showEmptyMessage="!is_loading"
                         @more="$router.push('/videos/programs')" />
@@ -43,6 +44,7 @@
                         :hideSort="true"
                         :hidePagination="true"
                         :showMoreButton="true"
+                        :showViewModeToggle="true"
                         :showEmptyMessage="!is_loading"
                         :emptyIcon="'ic:round-playlist-play'"
                         :emptyMessage="['あとで観たい番組を', 'マイリストに保存できます。']"
@@ -57,6 +59,7 @@
                         :hideSort="true"
                         :hidePagination="true"
                         :showMoreButton="true"
+                        :showViewModeToggle="true"
                         :showEmptyMessage="!is_loading"
                         :emptyIcon="'fluent:history-20-regular'"
                         :emptyMessage="'まだ視聴履歴がありません。'"
