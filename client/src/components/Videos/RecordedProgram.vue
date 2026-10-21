@@ -506,6 +506,39 @@ const confirmDeleteOfflineVideo = async (): Promise<void> => {
         .recorded-program__content-description {
             display: none;
         }
+
+        // グリッドは 1 枚あたりの幅が狭いため、チャンネル名と日時を縦に積む
+        // 横並びのままだとロゴと日時が重なって読めなくなる
+        .recorded-program__content-meta {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 2px;
+            font-size: 12px;
+
+            &-time {
+                margin-left: 0px;
+                white-space: nowrap;
+            }
+        }
+
+        // マイリストボタンはリスト表示の高さを前提に top: 38% で置かれているため、
+        // 縦型ではサムネイルへ重なる。サムネイル右上のメニューボタンと並べる
+        .recorded-program__mylist {
+            top: 5px;
+            right: 40px;
+            transform: none;
+            z-index: 3;
+            color: white;
+            background: rgb(0 0 0 / 48%);
+            box-shadow: 0 1px 5px rgb(0 0 0 / 45%);
+
+            @include smartphone-horizontal {
+                right: 40px;
+            }
+            @include smartphone-vertical {
+                right: 40px;
+            }
+        }
     }
     cursor: pointer;
     content-visibility: auto;

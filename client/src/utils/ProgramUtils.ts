@@ -689,28 +689,9 @@ export class ProgramUtils {
      * @returns フォーマットされた番組の長さ
      */
     static getProgramDuration(program: ILiveProgram | IRecordedProgram, use_kanji: boolean = false): string {
-        // 録画番組の場合は recorded_video.duration を使用
-        if ('recorded_video' in program) {
-            const duration = program.recorded_video.duration;
-            const hours = Math.floor(duration / 3600);
-            const minutes = Math.floor((duration % 3600) / 60);
-            const seconds = Math.floor(duration % 60);
-            if (use_kanji) {
-                if (hours > 0) {
-                    return `${hours}時間${minutes}分${seconds}秒`;
-                } else {
-                    return `${minutes}分${seconds}秒`;
-                }
-            } else {
-                if (hours > 0) {
-                    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-                } else {
-                    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-                }
-            }
-        }
-
-        // 通常の番組の場合は duration を使用
+        // 番組の放送時間を基準にする
+        // 録画番組でも recorded_video.duration は CM カット後の実ファイル長になるため使わない
+        // (前後の CM をカットしていると、実際に放送された長さより短く表示されてしまう)
         const duration = program.duration;
         const hours = Math.floor(duration / 3600);
         const minutes = Math.floor((duration % 3600) / 60);

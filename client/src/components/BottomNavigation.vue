@@ -16,11 +16,7 @@
             <Icon icon="fluent:timer-16-regular" width="30px" />
             <span class="mt-1">録画予約</span>
         </v-btn>
-        <v-btn class="bottom-navigation-button" to="/series/on-air"
-            :class="{'v-btn--active': $route.path.startsWith('/series/on-air')}">
-            <Icon icon="fluent:calendar-clock-20-regular" width="30px" />
-            <span class="mt-1">放送中</span>
-        </v-btn>
+        <!-- 放送中はシリーズのタブとして統合したため、ナビゲーションには出さない -->
         <v-btn class="bottom-navigation-button" to="/mypage/"
             :class="{'v-btn--active': $route.path.startsWith('/mypage')}">
             <Icon icon="fluent:person-20-regular" width="30px" />
