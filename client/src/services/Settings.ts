@@ -71,6 +71,8 @@ export interface IClientSettings {
     bs4k_live_passthrough_mode: 'TLV' | 'MPEG-TS';
     /** 録画一覧をグリッド表示で開くかどうか */
     video_list_grid_view: boolean;
+    /** サイドバーのナビゲーションに表示する項目 (テレビをみる / ビデオをみる は常に表示) */
+    navigation_visible_items: string[];
     // video_streaming_quality: 同期無効
     // video_streaming_quality_cellular: 同期無効
     // video_data_saver_mode: 同期無効

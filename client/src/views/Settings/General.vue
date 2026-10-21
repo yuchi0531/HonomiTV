@@ -78,6 +78,21 @@
                     v-model="settingsStore.settings.tv_hide_pinned_tab_when_empty">
                 </v-switch>
             </div>
+            <div class="settings__item settings__item--sync-disabled" v-if="!Utils.isSmartphoneVertical()">
+                <div class="settings__item-heading">サイドバーに表示する項目</div>
+                <div class="settings__item-label">
+                    PC のサイドバーに表示するメニューを選べます。「テレビをみる」「ビデオをみる」は常に表示されます。<br>
+                    使わない項目をオフにすると、サイドバーがすっきりします。この設定はこの端末にのみ保存されます。<br>
+                </div>
+                <div class="navigation-visibility-settings">
+                    <v-checkbox v-for="item in navigation_checkbox_items" :key="item.value"
+                        color="primary" hide-details density="compact"
+                        :label="item.title"
+                        :value="item.value"
+                        v-model="settingsStore.settings.navigation_visible_items">
+                    </v-checkbox>
+                </div>
+            </div>
             <div class="settings__item settings__item--switch">
                 <label class="settings__item-heading" for="tv_channel_up_down_buttons_reverse">チャンネル切り替えボタンとショートカットキーの上下方向をテレビリモコン準拠にする</label>
                 <label class="settings__item-label" for="tv_channel_up_down_buttons_reverse">
@@ -297,6 +312,18 @@ export default defineComponent({
             // ユーティリティをテンプレートで使えるように
             Utils: Object.freeze(Utils),
 
+            // サイドバーに表示する項目の選択肢
+            // 「テレビをみる」「ビデオをみる」は主要な入口のため常に表示し、ここには含めない
+            navigation_checkbox_items: [
+                {title: 'シリーズ', value: 'series'},
+                {title: '番組表', value: 'timetable'},
+                {title: '録画予約', value: 'reservations'},
+                {title: 'キャプチャ', value: 'captures'},
+                {title: 'オフライン保存', value: 'offline'},
+                {title: 'マイリスト', value: 'mylist'},
+                {title: '視聴履歴', value: 'watched_history'},
+            ],
+
             // フォームを小さくするかどうか
             is_form_dense: Utils.isSmartphoneHorizontal(),
 
@@ -424,6 +451,14 @@ export default defineComponent({
 
 </script>
 <style lang="scss" scoped>
+
+// サイドバーに表示する項目のチェックボックス
+.navigation-visibility-settings {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 4px 12px;
+    margin-top: 8px;
+}
 
 // 設定インポートの確認ダイヤログのタイトル
 .import-settings-dialog__title {

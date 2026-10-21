@@ -23,6 +23,7 @@
                     </router-link>
                     <!-- 放送中はシリーズのタブとして統合したため、ナビゲーションには出さない -->
                     <router-link v-ripple class="navigation__link" to="/series/"
+                        v-if="isNavigationItemVisible('series')"
                         :class="{
                             'navigation__link--active': $route.path.startsWith('/series'),
                             'navigation__link--icon-only': iconOnly,
@@ -32,6 +33,7 @@
                         <span v-if="!iconOnly" class="navigation__link-text">シリーズ</span>
                     </router-link>
                     <router-link v-ripple class="navigation__link" active-class="navigation__link--active" to="/timetable/"
+                        v-if="isNavigationItemVisible('timetable')"
                         :class="{
                             'navigation__link--active': $route.path.startsWith('/timetable'),
                             'navigation__link--icon-only': iconOnly,
@@ -41,6 +43,7 @@
                         <span v-if="!iconOnly" class="navigation__link-text">番組表</span>
                     </router-link>
                     <router-link v-ripple class="navigation__link" active-class="navigation__link--active" to="/reservations/"
+                        v-if="isNavigationItemVisible('reservations')"
                         :class="{
                             'navigation__link--active': $route.path.startsWith('/reservations'),
                             'navigation__link--icon-only': iconOnly,
@@ -50,6 +53,7 @@
                         <span v-if="!iconOnly" class="navigation__link-text">録画予約</span>
                     </router-link>
                     <router-link v-ripple class="navigation__link" active-class="navigation__link--active" to="/captures/"
+                        v-if="isNavigationItemVisible('captures')"
                         :class="{
                             'navigation__link--active': $route.path.startsWith('/captures'),
                             'navigation__link--icon-only': iconOnly,
@@ -59,6 +63,7 @@
                         <span v-if="!iconOnly" class="navigation__link-text">キャプチャ</span>
                     </router-link>
                     <router-link v-ripple class="navigation__link" active-class="navigation__link--active" to="/offline-videos/"
+                        v-if="isNavigationItemVisible('offline')"
                         :class="{
                             'navigation__link--active': $route.path.startsWith('/offline-videos'),
                             'navigation__link--icon-only': iconOnly,
@@ -71,6 +76,7 @@
                         <span v-if="!iconOnly" class="navigation__link-text">オフライン保存</span>
                     </router-link>
                     <router-link v-ripple class="navigation__link" active-class="navigation__link--active" to="/mylist/"
+                        v-if="isNavigationItemVisible('mylist')"
                         :class="{
                             'navigation__link--active': $route.path.startsWith('/mylist'),
                             'navigation__link--icon-only': iconOnly,
@@ -80,6 +86,7 @@
                         <span v-if="!iconOnly" class="navigation__link-text">マイリスト</span>
                     </router-link>
                     <router-link v-ripple class="navigation__link" active-class="navigation__link--active" to="/watched-history/"
+                        v-if="isNavigationItemVisible('watched_history')"
                         :class="{
                             'navigation__link--active': $route.path.startsWith('/watched-history'),
                             'navigation__link--icon-only': iconOnly,
@@ -149,6 +156,25 @@ export default defineComponent({
     computed: {
         ...mapStores(useVersionStore),
         ...mapStores(useSettingsStore),
+    },
+    methods: {
+        /**
+         * サイドバーに指定された項目を表示するかどうかを返す
+         *
+         * 「テレビをみる」「ビデオをみる」は主要な入口のため常に表示し、
+         * それ以外の項目だけを設定で切り替えられるようにしている。
+         *
+         * @param item ナビゲーション項目のキー
+         * @returns 表示する場合は true
+         */
+        isNavigationItemVisible(item: string): boolean {
+            const visible_items = this.settingsStore.settings.navigation_visible_items;
+            // 設定が未定義の場合は全項目を表示し、項目が消えて迷子になるのを避ける
+            if (Array.isArray(visible_items) === false) {
+                return true;
+            }
+            return visible_items.includes(item);
+        },
     },
     async created() {
         // オフライン保存ページは通信なしでも開くため、明らかなオフライン状態でバージョン API のエラーを表示しない

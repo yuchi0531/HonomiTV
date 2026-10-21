@@ -104,6 +104,8 @@ export interface ILocalClientSettings extends IClientSettings {
     bs4k_live_passthrough_mode: 'TLV' | 'MPEG-TS';
     /** 録画一覧をグリッド表示で開くかどうか */
     video_list_grid_view: boolean;
+    /** サイドバーのナビゲーションに表示する項目 (テレビをみる / ビデオをみる は常に表示) */
+    navigation_visible_items: string[];
     video_streaming_quality: VideoStreamingQuality;
     video_streaming_quality_cellular: VideoStreamingQuality;
     video_data_saver_mode: boolean;
@@ -279,6 +281,9 @@ export const ILocalClientSettingsDefault: ILocalClientSettings = {
     tv_24fps_mode: false,
     bs4k_live_passthrough_mode: 'TLV',
     video_list_grid_view: false,
+    navigation_visible_items: [
+        'series', 'timetable', 'reservations', 'captures', 'offline', 'mylist', 'watched_history',
+    ],
     // テレビを 24fps モードで視聴する (モバイル回線時)  (Default: オフ) (同期無効)
     tv_24fps_mode_cellular: false,
 
@@ -439,6 +444,7 @@ export const SYNCABLE_SETTINGS_KEYS: (keyof IClientSettings)[] = [
     // tv_24fps_mode_cellular: 同期無効
     // bs4k_live_passthrough_mode: 同期無効
     // video_list_grid_view: 同期無効
+    // navigation_visible_items: 同期無効
     // video_streaming_quality: 同期無効
     // video_streaming_quality_cellular: 同期無効
     // video_data_saver_mode: 同期無効
