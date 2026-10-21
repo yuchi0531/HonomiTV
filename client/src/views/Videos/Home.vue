@@ -53,6 +53,22 @@
                         :forMylist="true"
                         @more="$router.push('/mylist/')" />
                     <RecordedProgramList
+                        v-if="offline_videos.length > 0 || is_loading || is_offline_loaded"
+                        class="videos-home-container__offline-programs"
+                        title="オフライン保存"
+                        :programs="offline_programs"
+                        :total="offline_programs.length"
+                        :hideSort="true"
+                        :hidePagination="true"
+                        :showMoreButton="true"
+                        :showViewModeToggle="true"
+                        :showEmptyMessage="false"
+                        :isLoading="is_loading"
+                        :forOffline="true"
+                        :offlineVideos="offline_videos"
+                        :offlineJobs="offline_jobs"
+                        @more="$router.push('/offline-videos/')" />
+                    <RecordedProgramList
                         title="視聴履歴"
                         :programs="watched_programs"
                         :total="total_watched_programs"
@@ -81,6 +97,7 @@ import HeaderBar from '@/components/HeaderBar.vue';
 import Navigation from '@/components/Navigation.vue';
 import SPHeaderBar from '@/components/SPHeaderBar.vue';
 import RecordedProgramList from '@/components/Videos/RecordedProgramList.vue';
+import OfflineVideos, { IOfflineDownloadJob, IOfflineVideo } from '@/services/OfflineVideos';
 import { IRecordedProgram, isChasePlaybackProgram } from '@/services/Videos';
 import Videos from '@/services/Videos';
 import useSettingsStore from '@/stores/SettingsStore';
@@ -102,6 +119,14 @@ const total_mylist_programs = ref(0);
 const watched_programs = ref<IRecordedProgram[]>([]);
 const total_watched_programs = ref(0);
 
+// オフライン保存した番組のリスト
+// 端末に保存されているため、サーバー側の録画一覧とは独立して取得する
+const offline_videos = ref<IOfflineVideo[]>([]);
+const offline_jobs = ref<IOfflineDownloadJob[]>([]);
+const offline_programs = ref<IRecordedProgram[]>([]);
+// 一度でも読み込みが終わったかどうか (空でもセクションの表示判定に使う)
+const is_offline_loaded = ref(false);
+
 const is_loading = ref(true);
 
 // 自動更新用の interval ID を保持
@@ -119,6 +144,7 @@ watch(() => settingsStore.settings.mylist, async () => {
 // 視聴履歴の変更を監視して即座に再取得
 watch(() => settingsStore.settings.watched_history, async () => {
     await fetchWatchedPrograms();
+    await fetchOfflinePrograms();
 }, { deep: true });
 
 // 録画中・録画済み番組を取得
@@ -158,6 +184,35 @@ const fetchMylistPrograms = async () => {
     if (result) {
         mylist_programs.value = result.recorded_programs.slice(0, 4);  // 最新4件のみ表示
         total_mylist_programs.value = result.total;
+    }
+};
+
+// オフライン保存した番組を取得
+const fetchOfflinePrograms = async () => {
+    try {
+        const [videos, jobs] = await Promise.all([
+            OfflineVideos.getVideos(),
+            OfflineVideos.getJobs(),
+        ]);
+        offline_videos.value = videos;
+        offline_jobs.value = jobs;
+
+        // 保存済みの番組 ID からサーバー側の録画情報を取得する
+        // 端末にファイルはあっても録画が削除されている場合があるため、取得できた分だけ表示する
+        const video_ids = videos.map(video => video.video_id);
+        if (video_ids.length === 0) {
+            offline_programs.value = [];
+            return;
+        }
+        const result = await Videos.fetchVideos('ids', 1, video_ids);
+        offline_programs.value = result ? result.recorded_programs : [];
+    } catch (error) {
+        // オフライン保存は端末側の機能のため、失敗しても他のセクションの表示は妨げない
+        console.warn('[VideosHome] Failed to load offline videos:', error);
+        offline_videos.value = [];
+        offline_programs.value = [];
+    } finally {
+        is_offline_loaded.value = true;
     }
 };
 
