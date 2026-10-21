@@ -521,22 +521,50 @@ const confirmDeleteOfflineVideo = async (): Promise<void> => {
             }
         }
 
-        // マイリストボタンはリスト表示の高さを前提に top: 38% で置かれているため、
-        // 縦型ではサムネイルへ重なる。サムネイル右上のメニューボタンと並べる
+        // リスト表示は本文の右側にボタンを置くが、縦型では本文がサムネイルの下へ移動するため、
+        // ボタンだけが本文やサムネイルに重なる。サムネイル右上へ寄せてメニューと横並びにする
         .recorded-program__mylist {
-            top: 5px;
-            right: 40px;
+            top: 6px;
+            right: 42px;
             transform: none;
             z-index: 3;
             color: white;
-            background: rgb(0 0 0 / 48%);
+            background: rgb(0 0 0 / 55%);
             box-shadow: 0 1px 5px rgb(0 0 0 / 45%);
 
             @include smartphone-horizontal {
-                right: 40px;
+                top: 6px;
+                right: 42px;
             }
             @include smartphone-vertical {
-                right: 40px;
+                top: 4px;
+                right: 38px;
+            }
+        }
+
+        // 縦型カードは高さが内容で決まるため、リスト表示用の固定高さのヒントを使わない
+        // (contain-intrinsic-height が 125px / 115px のままだと実際の高さとずれて空き枠が生じる)
+        content-visibility: visible;
+        contain-intrinsic-height: none;
+        @include smartphone-vertical {
+            contain-intrinsic-height: none;
+        }
+
+        // メニューボタンも同様に、サムネイルの右上へ固定する
+        // top: 65% のままだと縦型では番組名の上に重なる
+        :deep(.recorded-program-menu--list) {
+            top: 6px;
+            right: 8px;
+            transform: none;
+            z-index: 3;
+            color: white;
+            background: rgb(0 0 0 / 55%);
+            border-radius: 50%;
+            box-shadow: 0 1px 5px rgb(0 0 0 / 45%);
+
+            @include smartphone-vertical {
+                top: 4px;
+                right: 4px;
             }
         }
     }
@@ -548,6 +576,7 @@ const confirmDeleteOfflineVideo = async (): Promise<void> => {
         padding: 0px 9px;
         contain-intrinsic-height: auto 115px;
     }
+
 
     &:hover {
         background: rgb(var(--v-theme-background-lighten-2));

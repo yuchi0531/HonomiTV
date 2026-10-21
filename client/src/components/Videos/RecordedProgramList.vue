@@ -409,17 +409,19 @@ const getOfflineDownloadJob = (videoID: number): IOfflineDownloadJob | null => {
                 display: grid;
                 // カードの最小幅を小さめにして、画面幅が余っているときに列数を増やす
                 // 240px 固定だと 800px 前後で 3 列にしかならず、左右に無駄な余白が残っていた
-                grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+                // auto-fit にして、カードが少ないときに空のトラックを作らせない
+                // (auto-fill だと表示件数が少ないホーム画面で空き枠が並んでしまう)
+                grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
                 gap: 12px;
                 padding: 16px;
                 height: auto;
 
                 @include tablet-vertical {
-                    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+                    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
                 }
 
                 @include smartphone-vertical {
-                    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+                    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
                     gap: 8px;
                     padding: 10px;
                 }
