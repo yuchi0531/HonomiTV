@@ -402,6 +402,9 @@ class WatchUrlConfig(BaseModel):
 NotificationEventType = Literal[
     'RecordingStarted',
     'RecordingCompleted',
+    'EncodeCompleted',
+    'FileDetected',
+    'FileDeleted',
     'ReservationAdded',
     'ReservationDeleted',
 ]

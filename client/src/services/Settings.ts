@@ -111,6 +111,9 @@ export interface IClientSettings {
 export type NotificationEventType =
     | 'RecordingStarted'
     | 'RecordingCompleted'
+    | 'EncodeCompleted'
+    | 'FileDetected'
+    | 'FileDeleted'
     | 'ReservationAdded'
     | 'ReservationDeleted';
 

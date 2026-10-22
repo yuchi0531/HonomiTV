@@ -182,6 +182,22 @@ class TelegramNotificationService(NotificationService):
                 heading = '✅ **録画が完了しました**',
                 quality_summary = event.GetQualitySummary(),
             )
+        if event.type == 'FileDetected':
+            assert event.recorded_program is not None
+            # 新たにファイルが見つかったことだけを伝える (録画完了とは別のイベント)
+            return self._build_recording_message(
+                event.recorded_program,
+                heading = '📁 **新しいファイルを検出しました**',
+            )
+        if event.type == 'FileDeleted':
+            assert event.recorded_program is not None
+            return self._build_recording_message(
+                event.recorded_program,
+                heading = '🗑 **録画ファイルが削除されました**',
+            )
+        if event.type == 'EncodeCompleted':
+            assert event.encode_info is not None
+            return self._build_encode_message(event.encode_info)
         assert event.reservation is not None
         if event.type == 'ReservationAdded':
             return self._build_reservation_message(event.reservation, heading = '🗓 **録画予約を追加しました**')
@@ -479,6 +495,13 @@ class WebhookNotificationService(NotificationService):
         event_titles: dict[NotificationEventType, str] = {
             'RecordingStarted': '🔴 録画を開始しました',
             'RecordingCompleted': '✅ 録画が完了しました',
+            'FileDetected': '📁 新しいファイルを検出しました',
+            'FileDeleted': '🗑 録画ファイルが削除されました',
+            'EncodeCompleted': (
+                '⚠️ エンコードに失敗しました'
+                if event.encode_info is not None and event.encode_info.is_failed is True
+                else '🎬 エンコードが完了しました'
+            ),
             'ReservationAdded': '🗓 録画予約を追加しました',
             'ReservationDeleted': '🗑 録画予約を削除しました',
         }
