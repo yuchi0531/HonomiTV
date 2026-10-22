@@ -83,4 +83,61 @@ describe('ホームのチャンネル種別タブ ハイライト', () => {
         wrapper.unmount();
         vi.restoreAllMocks();
     });
+
+    it('ピン留めがある状態でも地デジタブを開く', async () => {
+        // タブ順は ピン留め -> 地デジ -> BS になるため、インデックス 1 は BS になってしまう
+        vi.mocked(Channels.fetchAllChannels).mockResolvedValue({
+            GR: [{id: 'gr', display_channel_id: 'gr011', network_id: 1, service_id: 1, transport_stream_id: 1,
+                remocon_id: 1, channel_number: '011', type: 'GR', name: 'テスト', jikkyo_force: 0,
+                is_subchannel: false, is_radiochannel: false, is_watchable: true, source: 'Broadcast',
+                capabilities: {live_stream: true, live_stream_session: true, data_broadcasting: true,
+                    recording: true, remote_playback: false},
+                terrestrial_regions: null,
+                is_display: true, viewer_count: null, program_present: null, program_following: null}],
+            BS: [{id: 'bs', display_channel_id: 'bs101', network_id: 2, service_id: 2, transport_stream_id: 2,
+                remocon_id: 1, channel_number: 'BS101', type: 'BS', name: 'BSテスト', jikkyo_force: 0,
+                is_subchannel: false, is_radiochannel: false, is_watchable: true, source: 'Broadcast',
+                capabilities: {live_stream: true, live_stream_session: true, data_broadcasting: true,
+                    recording: true, remote_playback: false},
+                terrestrial_regions: null,
+                is_display: true, viewer_count: null, program_present: null, program_following: null}],
+            CS: [], CATV: [], SKY: [], BS4K: [], IPTV: [],
+            source_errors: {IPTV: null},
+        });
+
+        const wrapper = mount(Home, {global: {plugins: [createPinia()]}});
+        const settings = useSettingsStore();
+        // ピン留めを 1 件にしてピン留めタブを残す
+        settings.settings.pinned_channel_ids = ['x'];
+        await flushPromises();
+        await useChannelsStore().update(true);
+        await flushPromises();
+
+        const vm = wrapper.vm as unknown as {
+            active_tab_index: number;
+            activateTabByChannelType: (type: string) => boolean;
+            home_channels_list_with_pinned: Map<string, unknown[]>;
+        };
+        const tab_keys = Array.from(vm.home_channels_list_with_pinned.keys());
+        // 地デジタブが存在し、名前から正しい位置を引ける
+        const gb_index = tab_keys.indexOf('地デジ');
+        expect(gb_index).toBeGreaterThanOrEqual(0);
+
+        // 名前で指定すれば地デジタブが開く (インデックス 1 の BS ではない)
+        expect(vm.activateTabByChannelType('地デジ')).toBe(true);
+        expect(vm.active_tab_index).toBe(gb_index);
+
+        // 地デジが 1 番目にない構成でも名前で正しく引ける
+        if (gb_index !== 1) {
+            expect(vm.active_tab_index).not.toBe(1);
+        }
+
+        // 存在しないタブを指定しても何も起きない
+        const before = vm.active_tab_index;
+        expect(vm.activateTabByChannelType('存在しないタブ')).toBe(false);
+        expect(vm.active_tab_index).toBe(before);
+
+        wrapper.unmount();
+        vi.restoreAllMocks();
+    });
 });

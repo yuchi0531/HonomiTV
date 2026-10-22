@@ -289,8 +289,9 @@ export default defineComponent({
 
         // ピン留めされているチャンネルがないなら、タブを地デジタブに切り替える
         // ピン留めができる事を示唆するためにピン留めタブ自体は残す
+        // タブの並びはピン留めタブの有無で変わるため、名前から位置を引く
         if (this.settingsStore.settings.pinned_channel_ids.length === 0) {
-            this.active_tab_index = 1;
+            this.activateTabByChannelType('地デジ');
         }
 
         // 00秒までの残り秒数を取得
@@ -321,7 +322,7 @@ export default defineComponent({
         // この時点でピン留めされているチャンネルがないなら、タブを地デジタブに切り替える
         // ピン留めされているチャンネル自体はあるが、現在放送されていないため表示できない場合に備える
         if (this.home_channels_list_with_pinned.get('ピン留め')?.length === 0) {
-            this.active_tab_index = 1;
+            this.activateTabByChannelType('地デジ');
         }
 
         // content-visibility: auto の指定の関係でうまく計算されないことがある Swiper の autoHeight を強制的に再計算する
@@ -363,6 +364,27 @@ export default defineComponent({
         this.scroll_abort_controller = new AbortController();
     },
     methods: {
+        /**
+         * 指定したタブへ切り替える
+         *
+         * タブの並びはピン留めタブの有無やネットテレビの有効可否で変わるため、
+         * インデックスを直接指定すると別のタブが開いてしまう。
+         * タブ名から現在の並び順を引いて切り替える。
+         *
+         * @param channel_type 切り替え先のタブ名
+         * @returns 切り替えた場合は true、対象のタブが無い場合は false
+         */
+        activateTabByChannelType(channel_type: ChannelTypePretty): boolean {
+            const tab_keys = Array.from(this.home_channels_list_with_pinned.keys());
+            const index = tab_keys.indexOf(channel_type);
+            // 対象のタブが無い場合は何もしない (地デジが存在しない構成など)
+            if (index < 0) {
+                return false;
+            }
+            this.active_tab_index = index;
+            return true;
+        },
+
         /**
          * アクティブなタブの実測位置に合わせてハイライトを更新する
          *
@@ -646,7 +668,7 @@ export default defineComponent({
 
             // この時点でピン留めされているチャンネルがないなら、タブを地デジタブに切り替える
             if (this.home_channels_list_with_pinned.get('ピン留め')?.length === 0) {
-                this.active_tab_index = 1;
+                this.activateTabByChannelType('地デジ');
             }
 
             // ピン留めを外したチャンネルを通知
