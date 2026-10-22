@@ -74,4 +74,33 @@ describe('録画番組の放送時間表示', () => {
         expect(text).toContain('12:30:00');
         expect(text).toContain('(30分)');
     });
+
+    it('放送時刻は EPG を使い、録画マージンやファイル時間を混ぜない', () => {
+        // 録画は 11:59:55 から始まり、CM カットで実ファイルは 24 分しかない
+        const program = {
+            ...buildTrimmedProgram(),
+            recorded_video: {
+                ...buildTrimmedProgram().recorded_video,
+                recording_start_time: '2026-10-17T11:59:55+09:00',
+                recording_end_time: '2026-10-17T12:26:00+09:00',
+                duration: 1440,
+            },
+        };
+
+        const text = ProgramUtils.getProgramTime(program);
+
+        // EPG 上の放送時刻 (12:00 ～ 12:30) と番組長 (30分) が出る
+        expect(text).toContain('12:00');
+        expect(text).toContain('12:30');
+        expect(text).toContain('(30分)');
+        // 録画マージンの開始時刻や CM カット後の長さは出さない
+        expect(text).not.toContain('11:59');
+        expect(text).not.toContain('(24分)');
+    });
+
+    it('短縮表記でも EPG の放送時刻を使う', () => {
+        const text = ProgramUtils.getProgramTime(buildTrimmedProgram(), true);
+
+        expect(text).toBe('2026/10/17 12:00 ～ 12:30');
+    });
 });

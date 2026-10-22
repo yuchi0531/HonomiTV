@@ -448,21 +448,12 @@ export class ProgramUtils {
         // program が空でなく、かつ番組時刻が初期値でない
         if (program !== null && program.start_time !== '2000-01-01T00:00:00+09:00') {
 
-            // 録画番組では EPG 上の番組時刻と実際の録画ファイルの時刻がずれることがある
-            // 一覧・プレイヤー上の時刻は実際に再生されるファイルの時刻として見えるべきなので、
-            // recorded_video 側に録画開始/終了時刻が入っている場合はそちらを優先する
-            const is_recorded_program = 'recorded_video' in program;
-            const should_use_recording_time =
-                is_recorded_program === true &&
-                program.recorded_video.recording_start_time !== null &&
-                program.recorded_video.recording_end_time !== null;
-
-            const start_time = dayjs(should_use_recording_time === true ?
-                program.recorded_video.recording_start_time! :
-                program.start_time);
-            const end_time = dayjs(should_use_recording_time === true ?
-                program.recorded_video.recording_end_time! :
-                program.end_time);
+            // 放送時刻は EPG 上の番組時刻を使う
+            // 録画ファイルの recording_start_time / recording_end_time は録画マージンや
+            // 前後の CM カットで EPG とずれるため、放送された時刻の表示には使わない
+            // (録画時間そのものは getRecordingTime() 側で扱う)
+            const start_time = dayjs(program.start_time);
+            const end_time = dayjs(program.end_time);
 
             // duration が Infinity の場合は、end_time を無視して放送時間未定として扱う
             // この時 end_time には便宜上 start_time と同一の時刻が設定されるため、参照してはいけない
@@ -476,8 +467,9 @@ export class ProgramUtils {
             }
 
             // 分単位の番組長 (割り切れない場合は小数第2位で四捨五入)
-            const duration_seconds = should_use_recording_time === true ? program.recorded_video.duration : program.duration;
-            const duration = Math.round(duration_seconds / 60 * 100) / 100;
+            // 放送時間の表示なので、録画ファイルの実時間ではなく EPG の番組長を使う
+            const duration = Math.round(program.duration / 60 * 100) / 100;
+            const is_recorded_program = 'recorded_video' in program;
 
             if (is_short === true) {  // 時刻のみ
                 if (is_recorded_program === true) {
