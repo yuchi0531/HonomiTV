@@ -121,6 +121,7 @@ export type NotificationEventType =
     | 'RecordingCompleted'
     | 'EncodeCompleted'
     | 'FileDetected'
+    | 'FileDeleted'
     | 'ReservationAdded'
     | 'ReservationDeleted';
 

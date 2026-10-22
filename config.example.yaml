@@ -159,6 +159,7 @@ notifications:
         #   RecordingCompleted : 録画完了 (EDCB などが録画完了を報告したとき / 既定値)
         #   EncodeCompleted    : エンコード完了 (Amatsukaze のキューから検知)
         #   FileDetected       : 新規ファイル検出 (監視で新たにファイルを見つけたとき)
+        #   FileDeleted        : 録画ファイルの削除
         #   ReservationAdded   : 録画予約の追加
         #   ReservationDeleted : 録画予約の削除
         # events を省略した場合は RecordingCompleted のみが通知されます (従来と同じ挙動)。

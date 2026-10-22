@@ -196,6 +196,12 @@ class TelegramNotificationService(NotificationService):
                 event.recorded_program,
                 heading = '📁 **新しいファイルを検出しました**',
             )
+        if event.type == 'FileDeleted':
+            assert event.recorded_program is not None
+            return self._build_recording_message(
+                event.recorded_program,
+                heading = '🗑 **録画ファイルが削除されました**',
+            )
         if event.type == 'EncodeCompleted':
             assert event.encode_info is not None
             return self._build_encode_message(event.encode_info)
@@ -523,6 +529,7 @@ class WebhookNotificationService(NotificationService):
             'RecordingStarted': '🔴 録画を開始しました',
             'RecordingCompleted': '✅ 録画が完了しました',
             'FileDetected': '📁 新しいファイルを検出しました',
+            'FileDeleted': '🗑 録画ファイルが削除されました',
             'EncodeCompleted': (
                 '⚠️ エンコードに失敗しました'
                 if event.encode_info is not None and event.encode_info.is_failed is True

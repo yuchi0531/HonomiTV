@@ -523,6 +523,20 @@ class WebhookNotificationServiceTest(unittest.IsolatedAsyncioTestCase):
         quality_value = next(field['value'] for field in embed['fields'] if field['name'] == 'D / S')
         # Discord のフィールド上限 (1024 文字) を超えない
         self.assertLessEqual(len(quality_value), 1024)
+    async def test_file_deleted_is_separate_from_file_detected(self) -> None:
+        """録画ファイルの削除は、新規検出とは別の見出しで通知する。"""
+
+        service = WebhookNotificationService(ServerSettingsNotificationService(
+            type='Webhook', enabled=True, webhook_url='https://discord.com/api/webhooks/1234/token',
+            events=['FileDetected', 'FileDeleted'],
+        ))
+
+        await service.send_event(NotificationEvent('FileDetected', recorded_program=BuildRecordedProgram()))
+        await service.send_event(NotificationEvent('FileDeleted', recorded_program=BuildRecordedProgram()))
+
+        titles = [request['json']['embeds'][0]['title'] for request in RecordingHTTPClient.requests]
+        self.assertEqual(titles, ['📁 新しいファイルを検出しました', '🗑 録画ファイルが削除されました'])
+
     async def test_sends_reservation_added_event(self) -> None:
         """予約追加イベントは予約 ID と番組情報を Embed に含める。"""
 

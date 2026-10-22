@@ -10,7 +10,7 @@ import re
 import sys
 import time
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, ClassVar, Literal, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast
 
 import aiofiles
 import aiohttp
@@ -119,6 +119,38 @@ class LiveEncodingTask:
 
         return False
 
+
+    @staticmethod
+    def ShouldUseMMTLiveTranscode(
+        backend_type: str,
+        channel: Channel,
+        quality: str,
+        debug_mode_ts_path: Any,
+    ) -> bool:
+        """
+        BS4K のライブ視聴で MMT/TLV を直接 FFmpeg へ入力するかどうかを返す。
+
+        Mirakurun の BS4K は通常 MMT/TLV を返すため、そのまま入力する。
+        ただし copy は dantto4k などで MPEG-TS (HEVC) へ変換済みのストリームを
+        想定しており、MMT/TLV として入力すると失敗する。copy は MPEG-TS 経路で扱う。
+
+        Args:
+            backend_type (str): 受信バックエンド。
+            channel (Channel): 視聴対象のチャンネル。
+            quality (str): 要求された画質。
+            debug_mode_ts_path (Any): デバッグ用の TS ファイルパス (未設定なら None)。
+
+        Returns:
+            bool: MMT/TLV として直接入力する場合は True。
+        """
+
+        return (
+            backend_type == 'Mirakurun' and
+            channel.type == 'BS4K' and
+            channel.is_radiochannel is False and
+            quality != 'copy' and
+            debug_mode_ts_path is None
+        )
 
     def buildFFmpegOptions(self,
         quality: QUALITY_TYPES,
@@ -834,11 +866,14 @@ class LiveEncodingTask:
 
         # Mirakurun の BS4K 普通画質は、Mirakurun 側で MPEG-TS へ変換せず原始 MMT/TLV を FFmpeg へ直接入力する
         ## libaribtlv を利用できるのは FFmpeg だけなので、サーバー設定が HWEncC でもこの経路では FFmpeg に固定する
-        is_mmt_live_transcode = (
-            BACKEND_TYPE == 'Mirakurun' and
-            channel.type == 'BS4K' and
-            channel.is_radiochannel is False and
-            CONFIG.tv.debug_mode_ts_path is None
+        ## copy は dantto4k などで MPEG-TS (HEVC) へ変換済みのストリームを想定しており、
+        ## MMT/TLV として入力すると失敗するため対象外にする
+        ## (設定で MPEG-TS を選んだときは、通常の MPEG-TS 経路として tsreadex を通す)
+        is_mmt_live_transcode = self.ShouldUseMMTLiveTranscode(
+            backend_type = BACKEND_TYPE,
+            channel = channel,
+            quality = self.live_stream.quality,
+            debug_mode_ts_path = CONFIG.tv.debug_mode_ts_path,
         )
         if is_mmt_live_transcode is True:
             ENCODER_TYPE = 'FFmpeg'

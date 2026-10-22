@@ -412,6 +412,7 @@ NotificationEventType = Literal[
     'RecordingCompleted',
     'EncodeCompleted',
     'FileDetected',
+    'FileDeleted',
     'ReservationAdded',
     'ReservationDeleted',
 ]

@@ -101,8 +101,20 @@ class RecordedScanTask:
     # 録画中ファイルの更新イベントを間引く間隔 (ログ出力用) (秒)
     UPDATE_THROTTLE_SECONDS: ClassVar[int] = 30
 
+    # 録画完了を確認する間隔 (秒)
+    ## 番組は必ず分単位で編成されるため、秒単位で細かく確認する必要はない
+    RECORDING_COMPLETION_CHECK_INTERVAL_SECONDS: ClassVar[int] = 60
+
     # 録画完了と判断するまでの無更新時間 (秒)
-    RECORDING_COMPLETE_SECONDS: ClassVar[int] = 15
+    ## 確認間隔と揃える。しきい値が確認間隔より短いと、無更新時間を満たさずに
+    ## 1 回スキップされ、検出が最大で確認間隔 1 回分遅れる
+    ## 録画は数秒間隔で書き込まれるため、この時間で完了を十分に判別できる
+    RECORDING_COMPLETE_SECONDS: ClassVar[int] = 60
+
+    # 外部からの再解析リクエストで「まだ書き込み中」とみなす無更新時間 (秒)
+    ## 完了検出は 60 秒間隔だが、API 経由の再解析まで 60 秒待たせると操作感が悪い
+    ## 書き込み中の TS は数秒以内に必ず更新されるため、15 秒で十分に判別できる
+    METADATA_REFRESH_UNSTABLE_SECONDS: ClassVar[int] = 15
 
     # 録画中と判断する最大の経過時間 (秒)
     RECORDING_MAX_AGE_SECONDS: ClassVar[int] = 300  # 5分
@@ -823,8 +835,8 @@ class RecordedScanTask:
             return False
 
         # 更新直後のファイルを強制解析すると、外部トランスコードの一時出力を完成品として保存しかねない。
-        ## 最終更新から録画完了判定と同じ時間が経過するまでは、呼び出し元へ再試行可能なエラーとして返す。
-        if (datetime.now(tz=JST) - file_modified_at).total_seconds() < self.RECORDING_COMPLETE_SECONDS:
+        ## 最終更新から一定時間が経過するまでは、呼び出し元へ再試行可能なエラーとして返す。
+        if (datetime.now(tz=JST) - file_modified_at).total_seconds() < self.METADATA_REFRESH_UNSTABLE_SECONDS:
             raise RecordedFileMetadataNotStableError(f'Recorded file is still being updated: {file_path}')
 
         # 詳細取得と HLS の複数リクエストが同時に来ても、ファイルパスごとに再解析タスクを 1 個だけ生成する。
@@ -923,7 +935,7 @@ class RecordedScanTask:
         ):
             return
 
-        if (datetime.now(tz=JST) - file_modified_at).total_seconds() < self.RECORDING_COMPLETE_SECONDS:
+        if (datetime.now(tz=JST) - file_modified_at).total_seconds() < self.METADATA_REFRESH_UNSTABLE_SECONDS:
             raise RecordedFileMetadataNotStableError(f'Recorded file changed before metadata refresh: {file_path}')
 
         # バックエンドまたはファイル監視が録画中と認識している場合は、古い mtime だけを根拠に完成品とみなさない。
@@ -1765,6 +1777,21 @@ class RecordedScanTask:
                 async with await DriveIOLimiter.getSemaphore(file_path):
                     # 1録画の中でも重い処理を重ねず、メタデータ解析と API のためのリソースを残す。
                     await ThumbnailGenerator.fromRecordedProgram(recorded_program).generateAndSave()
+
+                    # サムネイルができた時点で通知を送る
+                    ## CM 解析まで待つと通知が数分遅れるため、解析の完了は待たない
+                    ## (CM 解析は通知に含めない情報しか生まない)
+                    if should_notify:
+                        try:
+                            await self._sendNewFileNotification(
+                                recorded_program,
+                                event_type = notify_event_type or 'FileDetected',
+                            )
+                        except Exception as notification_ex:
+                            logging.warning(f'通知送信に失敗しました: {notification_ex}')
+                        # 通知は 1 回だけ送る
+                        should_notify = False
+
                     # MMT/TLV の CM 解析は非常に高負荷なので、明示的に有効化された環境だけで実行する。
                     if CMSectionsDetector.shouldAnalyze(
                         recorded_program.recorded_video.container_format,
@@ -1781,16 +1808,6 @@ class RecordedScanTask:
                     else:
                         logging.info(f'{file_path}: Skipping MMT/TLV CM analysis because it is disabled.')
             logging.info(f'{file_path}: Background analysis task completed.')
-
-            # バックグラウンド解析完了後に通知を送信（サムネイル生成完了後）
-            if should_notify:
-                try:
-                    await self._sendNewFileNotification(
-                        recorded_program,
-                        event_type = notify_event_type or 'FileDetected',
-                    )
-                except Exception as notification_ex:
-                    logging.warning(f'通知送信に失敗しました: {notification_ex}')
 
         except Exception as ex:
             logging.error(f'{file_path}: Error in background analysis task:', exc_info=ex)
@@ -2109,15 +2126,50 @@ class RecordedScanTask:
                 self._recording_files.pop(file_path, None)
 
                 # DB からレコードを削除
-                db_recorded_video = await RecordedVideo.get_or_none(file_path=str(file_path))
+                db_recorded_video = await RecordedVideo.get_or_none(file_path=str(file_path)).select_related(
+                    'recorded_program',
+                    'recorded_program__channel',
+                )
                 if db_recorded_video is not None:
+                    # 削除すると番組情報が参照できなくなるため、通知用の情報を先に組み立てておく
+                    deleted_program = await self.__BuildDeletedProgramSnapshot(db_recorded_video)
+
                     # RecordedVideo の親テーブルである RecordedProgram を削除すると、
                     # CASCADE 制約により RecordedVideo も同時に削除される (Channel は親テーブルにあたるため削除されない)
                     await db_recorded_video.recorded_program.delete()
                     logging.info(f'{file_path}: Deleted record for removed file.')
 
+                    # 録画ファイルが消えたことを通知する
+                    if deleted_program is not None:
+                        await self._sendNewFileNotification(deleted_program, event_type = 'FileDeleted')
+
             except Exception as ex:
                 logging.error(f'{file_path}: Error handling file deletion inside lock:', exc_info=ex)
+
+
+    async def __BuildDeletedProgramSnapshot(
+        self,
+        db_recorded_video: RecordedVideo,
+    ) -> schemas.RecordedProgram | None:
+        """
+        削除前の録画情報から通知用のスナップショットを作る。
+
+        Args:
+            db_recorded_video (RecordedVideo): 削除対象の録画。
+
+        Returns:
+            schemas.RecordedProgram | None: 通知用の録画情報。組み立てられない場合は None。
+        """
+
+        try:
+            recorded_program = db_recorded_video.recorded_program
+            if recorded_program is None:
+                return None
+            return schemas.RecordedProgram.model_validate(recorded_program, from_attributes = True)
+        except Exception as ex:
+            # 通知用の情報が作れなくても削除自体は続行する
+            logging.warning('[RecordedScanTask] Failed to build the deleted program snapshot.', exc_info = ex)
+            return None
 
 
     async def __checkRecordingCompletion(self) -> None:
@@ -2169,5 +2221,5 @@ class RecordedScanTask:
             except Exception as ex:
                 logging.error('Error in recording completion check:', exc_info=ex)
 
-            # 5秒待機
-            await asyncio.sleep(5)
+            # 次の確認まで待機する
+            await asyncio.sleep(self.RECORDING_COMPLETION_CHECK_INTERVAL_SECONDS)

@@ -896,6 +896,7 @@ const notification_event_options = [
     {title: '録画完了 (EDCB など)', value: 'RecordingCompleted'},
     {title: 'エンコード完了 (Amatsukaze)', value: 'EncodeCompleted'},
     {title: '新規ファイル検出', value: 'FileDetected'},
+    {title: 'ファイル削除', value: 'FileDeleted'},
     {title: '録画予約の追加', value: 'ReservationAdded'},
     {title: '録画予約の削除', value: 'ReservationDeleted'},
 ] as const;

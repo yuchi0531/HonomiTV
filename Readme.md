@@ -81,7 +81,7 @@ HonomiTV はこれらをまとめ、チャンネル・録画・ユーザー・�
   - 仮想フォルダは実ファイルを移動せず、DB 上の紐付けだけで整理する。1 つのキャプチャを複数のフォルダへ登録でき、フォルダを削除してもキャプチャ画像は残る。フォルダはログインユーザーごとに独立し、他ユーザーのフォルダは参照できない。
   - 実ファイルが外部で削除されたキャプチャは一覧から自動的に外れる。破損した画像や EXIF の無い画像も一覧からは消えず、メタデータ無しとして表示される。
 - **録画・予約の通知 (Discord / Webhook)**: 録画の開始・完了と、録画予約の追加・削除を Telegram または Webhook へ通知できる。`notifications.services` に複数の通知先を並べられ、`type` で種類を選ぶ
-  - 通知するイベントは通知先ごとに `events` で選ぶ。指定できるのは `RecordingStarted` (録画開始) / `RecordingCompleted` (録画完了) / `EncodeCompleted` (エンコード完了) / `FileDetected` (新規ファイル検出) / `ReservationAdded` (予約追加) / `ReservationDeleted` (予約削除)。省略時は `RecordingCompleted` のみで、既存の設定は従来と同じ挙動になる。
+  - 通知するイベントは通知先ごとに `events` で選ぶ。指定できるのは `RecordingStarted` (録画開始) / `RecordingCompleted` (録画完了) / `EncodeCompleted` (エンコード完了) / `FileDetected` (新規ファイル検出) / `FileDeleted` (ファイル削除) / `ReservationAdded` (予約追加) / `ReservationDeleted` (予約削除)。省略時は `RecordingCompleted` のみで、既存の設定は従来と同じ挙動になる。
   - `RecordingCompleted` は EDCB などの録画バックエンドが「録画中」から「録画完了」へ遷移させたときに送る。ファイル監視が新たにファイルを見つけただけの場合は `FileDetected` として区別する。
   - `EncodeCompleted` は Amatsukaze のキュー (`/api/queue`) を定期的に確認し、エンコードが完了した録画を通知する。`notifications.amatsukaze` で有効化とアドレスを設定する。失敗したエンコードも通知する。
   - 録画開始の通知は、そのファイルが新たに録画中と判定された最初の 1 回だけ送る。録画中はファイル更新のたびに検出処理が走るため、毎回送るとスパムになる。
