@@ -1192,6 +1192,8 @@ class RecordedScanTask:
                 # 時長差異をチェックして転码された同一動画かどうかを判定する
                 is_transcoded_same_video = False
                 preserve_analysis_metadata = False
+                # files_only モードでハッシュが変わり、旧サムネイルが残っていない場合に再生成する
+                should_regenerate_thumbnail = False
                 if existing_db_recorded_video_after_analyze is not None:
                     # ファイルパスは同じ（これは既に前提条件として満たされている）
                     # ハッシュが変化している（上の if 文でスキップされていない = ハッシュ変化）
@@ -1203,6 +1205,17 @@ class RecordedScanTask:
                     # さもなければサムネイルが見つからなくなる（orphaned として削除される可能性もある）
                     if files_only and hash_changed:
                         old_thumbnail_path = anyio.Path(str(THUMBNAILS_DIR)) / f'{old_file_hash}.webp'
+
+                        # リネーム元が無い場合、そのままでは新しいハッシュのサムネイルが存在しない状態になる
+                        ## 別プロセスでのエンコード置換など、外部で中身が変わった場合は旧サムネイルが残っていないことがある
+                        ## この場合はリネームを諦め、後段で改めてサムネイルを生成する
+                        if await old_thumbnail_path.is_file() is False:
+                            logging.info(
+                                f'{file_path}: Thumbnail for the previous hash does not exist. '
+                                f'It will be regenerated. [old_file_hash: {old_file_hash}, new_file_hash: {new_file_hash}]'
+                            )
+                            should_regenerate_thumbnail = True
+
                         new_thumbnail_path = anyio.Path(str(THUMBNAILS_DIR)) / f'{new_file_hash}.webp'
                         old_thumbnail_tile_path = anyio.Path(str(THUMBNAILS_DIR)) / f'{old_file_hash}_tile.webp'
                         new_thumbnail_tile_path = anyio.Path(str(THUMBNAILS_DIR)) / f'{new_file_hash}_tile.webp'
@@ -1333,8 +1346,16 @@ class RecordedScanTask:
                 ## "Recording" 状態の録画ファイルはまだ録画が完了していないので、サムネイル生成などの解析タスクは実行しない
                 ## DB 保存に失敗した状態で開始すると、RecordedVideo が存在しないままサムネイル生成だけが進んでしまうため、この処理は永続化後に実行する必要がある
                 if recorded_program.recorded_video.status == 'Recorded':
+                    # files_only でも、サムネイルが失われている場合は生成し直す
+                    ## 外部でのエンコード置換によりハッシュが変わったケースが該当する
+                    ## (旧ハッシュのサムネイルが無いと、一覧のサムネイルが空のまま残ってしまう)
+                    if should_regenerate_thumbnail and file_path not in self._background_tasks:
+                        logging.info(f'{file_path}: Regenerating the missing thumbnail.')
+                        task = asyncio.create_task(self.__regenerateThumbnailOnly(recorded_program))
+                        self._background_tasks[file_path] = task
+
                     # files_only が True の場合は、CM 区間検出・サムネイル生成・キーフレーム解析をスキップ
-                    if not files_only and file_path not in self._background_tasks:
+                    elif not files_only and file_path not in self._background_tasks:
                         # 送るイベントを決める
                         ## EDCB が録画完了を報告した場合は「録画完了」、
                         ## それ以外で新たにファイルを見つけた場合は「新規ファイル検出」として区別する
