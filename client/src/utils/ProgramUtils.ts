@@ -675,6 +675,31 @@ export class ProgramUtils {
 
 
     /**
+     * 録画ファイルの実際の長さを「1:30:00」のような形式でフォーマットする
+     *
+     * サムネイル上の時間表示に使う。EPG の番組長ではなく、実際に再生される
+     * ファイルの長さ (CM カット後なら短くなる) を示す。
+     *
+     * @param program 録画番組情報
+     * @returns フォーマットされた録画ファイルの長さ
+     */
+    static getRecordingFileDuration(program: ILiveProgram | IRecordedProgram): string {
+        // 録画番組以外は番組長をそのまま使う
+        if ('recorded_video' in program === false) {
+            return ProgramUtils.getProgramDuration(program);
+        }
+        const duration = program.recorded_video.duration;
+        const hours = Math.floor(duration / 3600);
+        const minutes = Math.floor((duration % 3600) / 60);
+        const seconds = Math.floor(duration % 60);
+        if (hours > 0) {
+            return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
+
+
+    /**
      * 番組の長さを「1:30:00」のような形式でフォーマットする
      * @param program 番組情報
      * @param use_kanji 1:30:00 ではなく「1時間30分00秒」のような形式で返すかどうか

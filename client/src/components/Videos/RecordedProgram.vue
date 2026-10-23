@@ -13,7 +13,8 @@
             <div class="recorded-program__thumbnail">
                 <img class="recorded-program__thumbnail-image" loading="lazy" decoding="async"
                     :src="offlineThumbnailURL" @error="onOfflineThumbnailError">
-                <div class="recorded-program__thumbnail-duration">{{ProgramUtils.getProgramDuration(program)}}</div>
+                <!-- サムネイル上の時間は実際に再生されるファイルの長さを示す -->
+                <div class="recorded-program__thumbnail-duration">{{ProgramUtils.getRecordingFileDuration(program)}}</div>
                 <div v-if="program.recorded_video.status === 'Recording'" class="recorded-program__thumbnail-status recorded-program__thumbnail-status--recording">
                     <div class="recorded-program__thumbnail-status-dot"></div>
                     追いかけ再生
@@ -30,10 +31,7 @@
                     <Icon icon="fluent:error-circle-12-regular" width="15px" height="15px" />
                     メタデータ解析失敗
                 </div>
-                <div v-else-if="program.is_partially_recorded && settingsStore.settings.show_partially_recorded_badge"
-                    class="recorded-program__thumbnail-status recorded-program__thumbnail-status--partial">
-                    ⚠️ 一部のみ録画
-                </div>
+                <!-- 一部のみ録画の表示はサムネイル下側のバッジへ移した -->
                 <div v-if="watchHistory" class="recorded-program__thumbnail-progress">
                     <div class="recorded-program__thumbnail-progress-bar"
                         :style="`width: ${(watchHistory.last_playback_position / program.recorded_video.duration) * 100}%`">
@@ -71,6 +69,16 @@
                         <span class="recorded-program__content-meta-broadcaster-name">チャンネル情報なし</span>
                     </div>
                     <div class="recorded-program__content-meta-time">{{ProgramUtils.getProgramTime(program)}}</div>
+                </div>
+                <!-- サムネイル下側のバッジ: 一部のみ録画と実際の再生時間を並べる -->
+                <div class="recorded-program__content-badges">
+                    <span v-if="program.is_partially_recorded && settingsStore.settings.show_partially_recorded_badge"
+                        class="recorded-program__content-badge recorded-program__content-badge--partial">
+                        ⚠️ 一部のみ録画
+                    </span>
+                    <span class="recorded-program__content-badge recorded-program__content-badge--duration">
+                        {{ProgramUtils.getRecordingFileDuration(program)}}
+                    </span>
                 </div>
                 <div v-if="isOfflineJobFailed && offlineDownloadJob?.error" class="recorded-program__content-error">
                     {{offlineDownloadJob.error}}
@@ -507,6 +515,11 @@ const confirmDeleteOfflineVideo = async (): Promise<void> => {
             display: none;
         }
 
+        // バッジは狭い幅でも折り返して収める
+        .recorded-program__content-badges {
+            gap: 4px;
+        }
+
         // グリッドは 1 枚あたりの幅が狭いため、チャンネル名と日時を縦に積む
         // 横並びのままだとロゴと日時が重なって読めなくなる
         .recorded-program__content-meta {
@@ -756,6 +769,45 @@ const confirmDeleteOfflineVideo = async (): Promise<void> => {
                 white-space: normal;
                 -webkit-line-clamp: 2;  // 2行までに制限
                 -webkit-box-orient: vertical;
+            }
+        }
+
+        // サムネイル下側のバッジ (一部のみ録画 / 実際の再生時間)
+        &-badges {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 6px;
+            @include smartphone-vertical {
+                gap: 4px;
+                margin-top: 4px;
+            }
+        }
+
+        &-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11.5px;
+            line-height: 1.3;
+            white-space: nowrap;
+            @include smartphone-vertical {
+                font-size: 10.5px;
+                padding: 2px 5px;
+            }
+
+            // 一部のみ録画は注意を引く色にする
+            &--partial {
+                color: rgb(var(--v-theme-on-background));
+                background: rgb(var(--v-theme-background-lighten-2));
+            }
+
+            // 再生時間は控えめな見た目にして、タイトルや日時の邪魔をしない
+            &--duration {
+                color: rgb(var(--v-theme-text-darken-1));
+                background: rgb(var(--v-theme-background-lighten-2));
             }
         }
 

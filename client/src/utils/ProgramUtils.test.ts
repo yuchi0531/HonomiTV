@@ -103,4 +103,26 @@ describe('録画番組の放送時間表示', () => {
 
         expect(text).toBe('2026/10/17 12:00 ～ 12:30');
     });
+
+    it('サムネイル上の時間は実ファイルの長さを使う', () => {
+        // 放送は 30 分だが、CM カットで実ファイルは 24 分
+        const program = buildTrimmedProgram();
+
+        // 番組長 (EPG) は 30 分
+        expect(ProgramUtils.getProgramDuration(program)).toBe('30:00');
+        // サムネイル上の時間は実ファイルの 24 分
+        expect(ProgramUtils.getRecordingFileDuration(program)).toBe('24:00');
+    });
+
+    it('実ファイル時間は 1 時間以上で時:分:秒になる', () => {
+        const program = {
+            ...buildTrimmedProgram(),
+            recorded_video: {
+                ...buildTrimmedProgram().recorded_video,
+                duration: 3725,
+            },
+        };
+
+        expect(ProgramUtils.getRecordingFileDuration(program)).toBe('1:02:05');
+    });
 });
