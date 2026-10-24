@@ -671,6 +671,11 @@ class RecordedScanTask:
             cast(list[str], await RecordedVideo.all().values_list('file_hash', flat=True))
         )
 
+        # サムネイルが失われている録画を検出し、生成し直す
+        ## 外部でのエンコード置換や生成失敗などで、DB に thumbnail_info があるのに
+        ## 実ファイルが無い状態が起こりうる。一覧でサムネイルが空のまま残るのを防ぐ
+        await self.__regenerateMissingThumbnails()
+
         # サムネイルフォルダ内の全ファイルをスキャンし、不要なサムネイルファイルを削除
         logging.info('Deleting orphaned thumbnail files...')
         thumbnails_dir = anyio.Path(str(THUMBNAILS_DIR))
@@ -1767,6 +1772,83 @@ class RecordedScanTask:
             )
         except Exception as e:
             logging.warning(f'通知送信に失敗しました: {e}')
+
+
+    @staticmethod
+    async def __isThumbnailFileExists(file_hash: str) -> bool:
+        """
+        指定されたハッシュの代表サムネイル画像が存在するかを返す。
+
+        Args:
+            file_hash (str): 録画ファイルのハッシュ。
+
+        Returns:
+            bool: 代表サムネイルが存在する場合は True。
+        """
+
+        return await (anyio.Path(str(THUMBNAILS_DIR)) / f'{file_hash}.webp').is_file()
+
+    async def __regenerateMissingThumbnails(self) -> None:
+        """
+        サムネイル画像が失われている録画を検出し、生成し直す。
+
+        DB に thumbnail_info が保存されていても、実ファイルが無い状態になることがある
+        (外部でのエンコード置換、生成の失敗、孤児削除との競合など)。
+        そのままでは一覧でサムネイルが表示されないため、起動時にまとめて復旧する。
+
+        Returns:
+            None
+        """
+
+        # 録画完了済みの録画だけを対象にする (録画中はサムネイルを作らない)
+        recorded_videos = await RecordedVideo.filter(status = 'Recorded').values(
+            'id',
+            'file_hash',
+            'file_path',
+        )
+        missing_count = 0
+        regenerated_count = 0
+        for video_row in recorded_videos:
+            file_hash = video_row['file_hash']
+            # 代表サムネイルが無い場合だけ復旧する
+            ## タイル画像だけ欠けている場合も再生成で両方作られる
+            if await self.__isThumbnailFileExists(file_hash) is True:
+                continue
+            missing_count += 1
+            # prefetch_related は QuerySet に対して指定し、その結果を await する
+            recorded_program = await RecordedProgram.filter(
+                recorded_video__id = video_row['id'],
+            ).prefetch_related('recorded_video', 'channel').get_or_none()
+            # 録画ファイル自体が無い場合は復旧できない
+            if recorded_program is None:
+                continue
+            if await anyio.Path(str(recorded_program.recorded_video.file_path)).is_file() is False:
+                logging.warning(
+                    f'[RecordedScanTask] Cannot regenerate the thumbnail because the video file is missing. '
+                    f'[recorded_video_id: {video_row["id"]}, file_path: {video_row["file_path"]}]',
+                )
+                continue
+            logging.info(
+                f'[RecordedScanTask] Regenerating the missing thumbnail. '
+                f'[recorded_video_id: {video_row["id"]}, file_hash: {file_hash}]',
+            )
+            try:
+                await self.__regenerateThumbnailOnly(
+                    schemas.RecordedProgram.model_validate(recorded_program, from_attributes = True),
+                )
+                regenerated_count += 1
+            except Exception as ex:
+                # 1 件の失敗で他の録画の復旧を止めない
+                logging.error(
+                    f'[RecordedScanTask] Failed to regenerate the missing thumbnail. '
+                    f'[recorded_video_id: {video_row["id"]}, file_hash: {file_hash}]',
+                    exc_info = ex,
+                )
+        if missing_count > 0:
+            logging.info(
+                f'[RecordedScanTask] Regenerated missing thumbnails. '
+                f'[missing: {missing_count}, regenerated: {regenerated_count}]',
+            )
 
 
     async def __regenerateThumbnailOnly(self, recorded_program: schemas.RecordedProgram) -> None:
