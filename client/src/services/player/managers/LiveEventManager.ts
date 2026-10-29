@@ -74,7 +74,11 @@ class LiveEventManager implements PlayerManager {
         // 接続先の API URL は DPlayer 上で再生中の画質設定によって変化するため、
         // 画質切り替え後の再起動も想定しコンストラクタではなくあえて init() 内で API URL を取得している
         const api_quality = PlayerUtils.extractLiveAPIQualityFromDPlayer(this.player);
-        const eventsource_url = `${Utils.api_base_url}/streams/live/${channels_store.display_channel_id}/${api_quality}/events`;
+        // 画質 URL に付与された入力ストリーム形式を購読側にも引き継ぐ
+        // 指定が無ければサーバー側の既定 (TLV) に揃う
+        const stream_format = PlayerUtils.extractBS4KStreamFormatFromDPlayer(this.player);
+        const eventsource_url = `${Utils.api_base_url}/streams/live/${channels_store.display_channel_id}/${api_quality}/events` +
+            (stream_format === 'MPEG-TS' ? '?stream_format=MPEG-TS' : '');
         this.eventsource = new EventSource(eventsource_url);
 
         // EventSource 自体が開かれたときのイベント

@@ -1,12 +1,13 @@
 
 import asyncio
 import copy
+import dataclasses
 import time
 from collections.abc import AsyncGenerator
-from typing import Annotated
+from typing import Annotated, Literal
 
 import aiohttp
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from fastapi.requests import Request
 from fastapi.responses import Response, StreamingResponse
 from sse_starlette.sse import EventSourceResponse
@@ -48,8 +49,24 @@ async def ValidateChannelID(display_channel_id: Annotated[str, Path(description=
 async def ValidateQuality(
     display_channel_id: Annotated[str, Path(description='チャンネル ID 。ex: gr011')],
     quality: Annotated[str, Path(description='映像の品質。ex: original, 1080p')],
+    stream_format: Annotated[Literal['TLV', 'MPEG-TS'], Query(
+        description='BS4K の入力ストリーム形式。dantto4k などで MPEG-TS へ変換している構成では MPEG-TS を指定する。',
+    )] = 'TLV',
 ) -> LiveStreamQualityWithOptions:
     """ 映像の品質のバリデーション """
+
+    # BS4K の入力ストリーム形式はクライアント設定 (bs4k_live_passthrough_mode) に対応する
+    ## BS4K 以外では使われないオプションだが、指定自体は受け付けておく
+
+    # Raw MMTS は Mirakurun の MMT/TLV をそのまま流す経路なので、MPEG-TS では成立しない
+    ## クライアントは設定に応じて画質を出し分けるため通常は届かないが、
+    ## 直接叩かれた場合に意味のない組み合わせを受け付けないようにする
+    if quality == 'raw-mmts' and stream_format == 'MPEG-TS':
+        logging.error(f'[LiveStreamsRouter][ValidateQuality] Raw MMTS is only available for TLV. [display_channel_id: {display_channel_id}]')
+        raise HTTPException(
+            status_code = status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail = 'Raw MMTS is only available for TLV',
+        )
 
     # ラジオチャンネルには MPEG-2 映像がなく、mpeg2toh264 では再生できないため受け付けない
     if quality == 'original':
@@ -72,7 +89,17 @@ async def ValidateQuality(
             detail = 'Specified quality was not found',
         )
 
-    return stream_quality
+    # クライアントが指定した入力ストリーム形式を反映する
+    ## 同じ画質でも TLV と MPEG-TS で別のライブストリームとして扱う必要があるため、
+    ## エンコードオプションへ持たせてライブストリーム ID にも反映させる
+    ## StreamEncodingOptions は frozen なので replace で新しいインスタンスを作る
+    return LiveStreamQualityWithOptions(
+        quality = stream_quality.quality,
+        encoding_options = dataclasses.replace(
+            stream_quality.encoding_options,
+            bs4k_stream_format = stream_format,
+        ),
+    )
 
 
 def BuildDirectRawMMTSLiveStreamStatus() -> schemas.LiveStreamStatus:
