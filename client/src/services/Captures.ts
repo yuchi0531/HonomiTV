@@ -268,7 +268,10 @@ class Captures {
         const params: Record<string, string | number | boolean | string[]> = {};
         for (const [key, value] of Object.entries(filter)) {
             // 空の配列 (検索語を探す範囲を1つも選んでいない) も、指定なしとして送らない
-            if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
+            // 数値に変換できなかった値 (NaN) も送らない
+            // 番組キーを持たない URL を直接開いたときに、サーバーが int_parsing で 422 を返してしまう
+            if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0) ||
+                (typeof value === 'number' && Number.isNaN(value))) {
                 continue;
             }
             params[key] = value as string | number | boolean | string[];

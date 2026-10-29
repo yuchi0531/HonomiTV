@@ -1075,6 +1075,10 @@ class CaptureScanTask:
                     pass
 
             async def WatchRoot(root: str) -> None:
+
+                # 監視に失敗したときの待ち時間 (秒)
+                ## 成功するたびに初期値へ戻す
+                retry_delay = 5
                 """
                 保存先を1つ監視する
                 保存先が見えなくなったときは、この保存先だけを再試行し、ほかの保存先の監視を続ける
@@ -1129,9 +1133,19 @@ class CaptureScanTask:
                                 break
 
                     except OSError as ex:
-                        logging.warning(f'{root}: Capture watcher failed; retrying.', exc_info=ex)
+                        # 保存先が見つからない間は待ち時間を倍々に延ばす
+                        ## 5 秒間隔のままだと、設定ミスや未マウントのまま起動した場合に
+                        ## トレースバック付きの警告を延々と出し続けてしまう
+                        retry_delay = min(max(retry_delay * 2, 5), 300)
+                        logging.warning(
+                            f'{root}: Capture watcher failed; retrying in {retry_delay} seconds.',
+                            exc_info = ex,
+                        )
                         needs_scan_on_resume = True
-                        await asyncio.sleep(5)
+                        await asyncio.sleep(retry_delay)
+                        continue
+                    # 監視を再開できたら待ち時間を戻す
+                    retry_delay = 5
 
             # 保存先ごとに監視する (まとめて監視すると、1つの保存先が見えないだけで、すべての保存先の監視が止まるため)
             await asyncio.gather(*(WatchRoot(root) for root in local_roots))
@@ -1147,7 +1161,8 @@ class CaptureScanTask:
 
             # ローカルの保存先と併用していても、すべての保存先を走査した一括スキャンにして、期限による削除まで行う
             while True:
-                await asyncio.sleep(interval * 60)
+                # 設定は秒単位なので、そのまま待つ
+                await asyncio.sleep(interval)
                 if not self.scan_lock.locked():
                     await self.runBatchScan()
 

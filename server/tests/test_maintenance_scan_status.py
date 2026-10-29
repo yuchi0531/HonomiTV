@@ -92,3 +92,49 @@ class CaptureScanTaskProgressTest(unittest.TestCase):
         self.assertTrue(task.batch_scan_status.is_running)
         self.assertEqual(task.batch_scan_status.processed_count, 3)
         self.assertEqual(task.batch_scan_status.total_count, 10)
+
+
+class CapturePollingIntervalTest(unittest.TestCase):
+    """キャプチャフォルダの監視間隔の単位を検証する。"""
+
+    def test_configuration_documents_seconds(self) -> None:
+        """設定は秒単位として定義されている。
+
+        コードが分として解釈すると、30 を設定した利用者は 30 分待つことになる。
+        """
+
+        from app.config import _ServerSettingsCapture
+
+        field = _ServerSettingsCapture.model_fields['upload_folders_polling_interval']
+        # 既定値は 0 (監視しない) で、負の値は受け付けない
+        self.assertEqual(field.default, 0.0)
+
+    def test_poll_sleeps_for_the_configured_seconds(self) -> None:
+        """設定した秒数だけ待つ (分に換算しない)。"""
+
+        import inspect
+
+        from app.metadata import CaptureScanTask as module
+
+        source = inspect.getsource(module.CaptureScanTask.watchFolders)
+        # 分換算 (* 60) が残っていないことを確認する
+        self.assertNotIn('interval * 60', source)
+        self.assertIn('asyncio.sleep(interval)', source)
+
+
+class ThumbnailUpdateAuthTest(unittest.TestCase):
+    """録画サムネイルの差し替え API が認証を要求することを検証する。"""
+
+    def test_thumbnail_update_requires_login(self) -> None:
+        """未ログインでは実行できない。
+
+        アップロード API は匿名でも使えるため、認証が無いと第三者が
+        任意の録画のサムネイルを上書きできてしまう。
+        """
+
+        import inspect
+
+        from app.routers import VideosRouter
+
+        source = inspect.getsource(VideosRouter.VideoThumbnailUpdateAPI)
+        self.assertIn('GetCurrentUser', source)

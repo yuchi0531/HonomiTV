@@ -158,6 +158,10 @@ export interface IServerSettings {
     };
     capture: {
         upload_folders: string[];
+        // 保存先フォルダを監視する間隔 (秒)
+        // 0 の場合は監視しない (起動時のスキャンのみ)
+        // 設定画面には出さず config.yaml で直接編集するが、型に無いと保存時に既定値へ戻ってしまう
+        upload_folders_polling_interval: number;
     };
     notifications: {
         services: Array<{
@@ -217,6 +221,7 @@ export const IServerSettingsDefault: IServerSettings = {
     },
     capture: {
         upload_folders: [],
+        upload_folders_polling_interval: 0,
     },
     notifications: {
         services: [],

@@ -25,6 +25,12 @@
                     {{genre.major}} / {{genre.middle}}
                 </div>
             </div>
+            <!-- この番組で撮ったキャプチャへ移る -->
+            <a v-if="channelsStore.channel.current.program_present?.source === 'Broadcast'" v-ripple class="program-info__captures"
+                href="/captures/broadcast" @click.prevent="openCaptures()">
+                <Icon icon="fluent:image-multiple-20-regular" width="17px" height="17px" />
+                <span class="ml-2">この番組で撮ったキャプチャ</span>
+            </a>
             <div class="program-info__next">
                 <span class="program-info__next-decorate">NEXT</span>
                 <Icon class="program-info__next-icon" icon="fluent:fast-forward-20-filled" width="16px" />
@@ -237,6 +243,49 @@ export default defineComponent({
         },
     },
     methods: {
+
+        /**
+         * 現在放送中の番組で撮ったキャプチャの画面へ移る
+         * キャプチャがまだ無くても番組名や局ロゴを出せるよう、番組情報を画面遷移と一緒に渡す
+         */
+        openCaptures(): void {
+            const program = this.channelsStore.channel.current.program_present;
+            const channel = this.channelsStore.channel.current;
+            // ネットテレビ (Jellyfin) の番組は放送波の識別子を持たず、番組キーでキャプチャを引けない
+            if (program === null || program.source !== 'Broadcast') {
+                return;
+            }
+            this.$router.push({
+                path: '/captures/broadcast',
+                query: {
+                    network_id: String(program.network_id),
+                    service_id: String(program.service_id),
+                    event_id: String(program.event_id),
+                    start_time: program.start_time,
+                },
+                state: {
+                    capture_program_hint: {
+                        id: 0,
+                        network_id: program.network_id,
+                        service_id: program.service_id,
+                        event_id: program.event_id,
+                        start_time: program.start_time,
+                        end_time: program.end_time,
+                        duration: program.duration,
+                        title: program.title,
+                        description: program.description,
+                        channel: {
+                            id: channel.id,
+                            display_channel_id: channel.display_channel_id,
+                            name: channel.name,
+                            type: channel.type,
+                        },
+                        recorded_program_ids: [],
+                    },
+                },
+            });
+        },
+
         /**
          * 現在の番組の録画予約状態をチェックする
          * 全予約を取得し、現在放送中の番組と一致する予約を探す
