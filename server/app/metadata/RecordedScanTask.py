@@ -209,6 +209,10 @@ class RecordedScanTask:
         # 録画フォルダ以下の一括スキャンを実行中かどうか
         self._is_batch_scan_running = False
 
+        # 録画フォルダ以下の一括スキャンの進捗 (実行中かどうかと、処理した録画ファイルの件数)
+        ## 起動時の自動スキャンと手動スキャンの両方で更新し、BatchScanStatusAPI が参照する
+        self.batch_scan_status = schemas.MaintenanceTaskStatus()
+
         # バックグラウンドタスクの状態管理
         self._background_tasks: dict[anyio.Path, asyncio.Task[None]] = {}
 
@@ -495,7 +499,7 @@ class RecordedScanTask:
 
         # 既に一括スキャンを実行中の場合は HTTPException を発生させる
         # API から手動で一括スキャンを実行した際に重複して実行されないようにするためのバリデーション
-        if self._is_batch_scan_running:
+        if self.batch_scan_status.is_running is True:
             raise HTTPException(
                 status_code = status.HTTP_429_TOO_MANY_REQUESTS,
                 detail = 'Batch scan of recording folders is already running',
@@ -503,6 +507,7 @@ class RecordedScanTask:
 
         logging.info('Batch scan of recording folders has been started.')
         self._is_batch_scan_running = True
+        self.batch_scan_status = schemas.MaintenanceTaskStatus(is_running=True)
 
         # 現在登録されている全ての RecordedVideo レコードの情報をキャッシュ
         ## すべての情報をキャッシュすると key_frames フィールドのデータ量が大きすぎてメモリとディスク I/O を大量に食うため、
@@ -602,6 +607,11 @@ class RecordedScanTask:
             if type(pattern) is str and pattern.strip() != ''
         ]
 
+        # 進捗の総数には、登録済みの録画ファイルの件数を使う
+        ## 全ファイルを先に数えると最初の1件の処理が遅れるため、走査の前には数えない
+        ## 新しく見つかったファイルの分は、処理した件数が総数を超えた時点で総数を増やして合わせる
+        self.batch_scan_status.total_count = len(existing_db_recorded_videos)
+
         # 各録画フォルダをスキャン
         logging.info('Scanning recorded folders...')
         processed_paths: set[str] = set()
@@ -640,6 +650,14 @@ class RecordedScanTask:
                     if file_path_str in processed_paths:
                         continue
                     processed_paths.add(file_path_str)
+
+                    # 進捗を更新する
+                    ## 総数は登録済みの録画ファイルの件数を元にした目安で、新しく見つかった分だけ増やす
+                    self.batch_scan_status.processed_count += 1
+                    self.batch_scan_status.total_count = max(
+                        self.batch_scan_status.total_count,
+                        self.batch_scan_status.processed_count,
+                    )
 
                     # 見つかったファイルを処理
                     await self.processRecordedFile(
@@ -757,6 +775,10 @@ class RecordedScanTask:
         await SeriesIndexer.rebuild()
         logging.info('Batch scan of recording folders has been completed.')
         self._is_batch_scan_running = False
+
+        # 実行中の状態を解除する
+        ## 進捗の件数はそのまま残し、完了後に何件処理したかを確認できるようにする
+        self.batch_scan_status.is_running = False
         # 初回バッチスキャン完了後は通知を有効にする
         self._is_initial_scan = False
 

@@ -24,6 +24,7 @@ from app.constants import (
     RESTART_REQUIRED_LOCK_PATH,
     THUMBNAILS_DIR,
 )
+from app.metadata.CaptureScanTask import CaptureScanTask
 from app.metadata.CMSectionsDetector import CMSectionsDetector
 from app.metadata.RecordedScanTask import RecordedScanTask
 from app.metadata.ThumbnailGenerator import ThumbnailGenerator
@@ -45,6 +46,9 @@ router = APIRouter(
 
 # 録画フォルダの一括スキャン・バックグラウンド解析タスクの asyncio.Task インスタンス
 batch_scan_task: asyncio.Task[None] | None = None
+# キャプチャフォルダの一括スキャンのタスク
+## 実行中かどうかを判定し、多重実行を防ぐために保持する
+capture_scan_task: asyncio.Task[None] | None = None
 background_analysis_task: asyncio.Task[None] | None = None
 
 
@@ -263,6 +267,21 @@ async def ManualScanFileAPI(
     await scan_task.scanSingleFile(request.path, force_update=True)
 
 
+@router.get(
+    '/batch-scan/status',
+    summary = '録画フォルダ一括スキャン進捗取得 API',
+    response_model = schemas.MaintenanceTaskStatus,
+)
+async def BatchScanStatusAPI():
+    """
+    録画フォルダの一括スキャンの進捗を取得する。<br>
+    サーバーの起動時に自動で実行される一括スキャンの進捗も取得できる。<br>
+    total_count は登録済みの録画ファイルの件数を元にした目安で、新しく見つかった録画ファイルの分だけ途中で増えることがある。
+    """
+
+    return RecordedScanTask().batch_scan_status
+
+
 @router.post(
     '/run-background-analysis',
     summary = 'バックグラウンド解析タスク手動実行 API',
@@ -355,6 +374,71 @@ async def BackgroundAnalysisAPI():
             status_code = status.HTTP_429_TOO_MANY_REQUESTS,
             detail = 'Background analysis task is already running',
         )
+
+
+@router.post(
+    '/capture-scan/run',
+    summary = 'キャプチャフォルダ一括スキャン API',
+    status_code = status.HTTP_204_NO_CONTENT,
+)
+async def CaptureScanAPI():
+    """
+    キャプチャの保存先フォルダ内の全画像をスキャンし、追加・変更があった画像のみを解析して DB に永続化する。<br>
+    見つからなくなった画像は Missing にし、1週間たっても戻らなければ DB から削除する。<br>
+    このメンテナンス機能は管理者ユーザーでなくてもアクセスできる。
+    """
+
+    global capture_scan_task
+
+    async def CaptureScan():
+        global capture_scan_task
+        logging.info('Manual batch scan of capture folders has started.')
+
+        # 一括スキャンを実行
+        ## 起動時の自動スキャンの実行中に呼ばれた場合も runBatchScan() が 429 で失敗するので、失敗したときも None に戻す
+        try:
+            is_complete = await CaptureScanTask().runBatchScan()
+        finally:
+            capture_scan_task = None  # 再度新しいタスクを作成できるように None にする
+
+        # 読めなかった保存先や、途中で失敗した処理があったときは、完了したと伝えずに失敗を返す
+        if is_complete is False:
+            logging.warning('Manual batch scan of capture folders could not scan some folders completely.')
+            raise HTTPException(
+                status_code = status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail = 'Some capture folders could not be scanned completely',
+            )
+
+        # 一括スキャンが完了した
+        logging.info('Manual batch scan of capture folders has finished.')
+
+    # タスクが実行中でない場合、新しくタスクを作成して実行
+    ## asyncio.create_task() で実行することで、API への HTTP コネクションが切断されてもタスクが継続される
+    if capture_scan_task is None:
+        capture_scan_task = asyncio.create_task(CaptureScan())
+        # タスクの実行が完了するまで待機
+        await capture_scan_task
+    else:
+        logging.warning('[MaintenanceRouter][CaptureScanAPI] Batch scan of capture folders is already running.')
+        raise HTTPException(
+            status_code = status.HTTP_429_TOO_MANY_REQUESTS,
+            detail = 'Batch scan of capture folders is already running',
+        )
+
+
+@router.get(
+    '/capture-scan/status',
+    summary = 'キャプチャフォルダ一括スキャン進捗取得 API',
+    response_model = schemas.MaintenanceTaskStatus,
+)
+async def CaptureScanStatusAPI():
+    """
+    キャプチャフォルダの一括スキャンの進捗を取得する。<br>
+    サーバーの起動時に自動で実行される一括スキャンの進捗も取得できる。<br>
+    total_count は登録済みのキャプチャのファイル数を元にした目安で、新しく見つかった画像の分だけ途中で増えることがある。
+    """
+
+    return CaptureScanTask().batch_scan_status
 
 
 @router.post(
