@@ -6,6 +6,13 @@ import APIClient from '@/services/APIClient';
 import Utils from '@/utils';
 
 
+export interface IMaintenanceTaskStatus {
+    is_running: boolean;
+    processed_count: number;
+    total_count: number;
+}
+
+
 class Maintenance {
 
     /**
@@ -148,6 +155,28 @@ class Maintenance {
     /**
      * サーバーを再起動する
      */
+    /**
+     * キャプチャフォルダの一括スキャンの進捗を取得する
+     * @param show_error エラー時にエラーメッセージを表示するかどうか
+     * @returns 進捗状況 (取得できなかった場合は null)
+     */
+    static async fetchCaptureScanStatus(show_error: boolean = true): Promise<IMaintenanceTaskStatus | null> {
+
+        // API リクエストを実行
+        const response = await APIClient.get<IMaintenanceTaskStatus>('/maintenance/capture-scan/status');
+
+        // エラー処理
+        if (response.type === 'error') {
+            if (show_error === true) {
+                APIClient.showGenericError(response, 'キャプチャフォルダの一括スキャンの進捗を取得できませんでした。');
+            }
+            return null;
+        }
+
+        return response.data;
+    }
+
+
     static async restartServer(): Promise<boolean> {
 
         // API リクエストを実行

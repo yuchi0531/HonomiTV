@@ -1869,7 +1869,7 @@ class RecordedScanTask:
         try:
             # サムネイル生成は重いため、通常のバックグラウンド解析と同じ制限を共有する
             async with ProcessLimiter.getSemaphore('RecordedScanTask', max_concurrency = 1):
-                async with await DriveIOLimiter.getSemaphore(file_path):
+                async with DriveIOLimiter.getSemaphore(file_path):
                     await ThumbnailGenerator.fromRecordedProgram(recorded_program).generateAndSave()
             logging.info(f'{file_path}: Regenerated the missing thumbnail.')
         except Exception as ex:
@@ -1904,7 +1904,7 @@ class RecordedScanTask:
             # メタデータ解析とは独立した1枠を確保しつつ、バックグラウンド解析が複数録画へ拡散するのを防ぐ。
             async with ProcessLimiter.getSemaphore('RecordedScanTask', max_concurrency=1):
                 # DriveIOLimiter で同一 HDD に対してのバックグラウンドタスクの同時実行数を原則1セッションに制限
-                async with await DriveIOLimiter.getSemaphore(file_path):
+                async with DriveIOLimiter.getSemaphore(file_path):
                     # 1録画の中でも重い処理を重ねず、メタデータ解析と API のためのリソースを残す。
                     await ThumbnailGenerator.fromRecordedProgram(recorded_program).generateAndSave()
 

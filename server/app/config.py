@@ -389,6 +389,9 @@ class _ServerSettingsVideo(BaseModel):
 
 class _ServerSettingsCapture(BaseModel):
     upload_folders: list[DirectoryPath] = []
+    # 保存先フォルダを監視して、外部から追加されたキャプチャも取り込む間隔 (秒)
+    ## 0 の場合は監視しない (起動時のスキャンのみ)
+    upload_folders_polling_interval: Annotated[float, Field(ge=0, strict=True, allow_inf_nan=False)] = 0.0
 
 
 class WatchUrlConfig(BaseModel):

@@ -302,7 +302,7 @@ async def BackgroundAnalysisAPI():
                     continue
 
                 async with ProcessLimiter.getSemaphore('RecordedScanTask', max_concurrency=1):
-                    async with await DriveIOLimiter.getSemaphore(file_path):
+                    async with DriveIOLimiter.getSemaphore(file_path):
                         # CM 区間情報が未解析の場合だけ検出する。
                         ## [] は「正常に解析したが CM 区間がなかった」ことを表す。
                         container_format = cast(Literal['MPEG-TS', 'MPEG-4', 'MMT/TLV'], video_row['container_format'])

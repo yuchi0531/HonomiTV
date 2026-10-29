@@ -27,6 +27,7 @@ from app.utils import Interlaced
 if TYPE_CHECKING:
     from app.models.AccountLink import AccountLink
     from app.models.BlueskyAccount import BlueskyAccount
+    from app.models.Capture import CaptureFavorite, CaptureTag
     from app.models.TwitterAccount import TwitterAccount
 
 
@@ -69,6 +70,8 @@ class User(TortoiseModel):
     twitter_accounts: fields.ReverseRelation[TwitterAccount]
     bluesky_accounts: fields.ReverseRelation[BlueskyAccount]
     account_links: fields.ReverseRelation[AccountLink]
+    capture_favorites: fields.ReverseRelation[CaptureFavorite]
+    capture_tags: fields.ReverseRelation[CaptureTag]
     created_at = fields.DatetimeField(auto_now_add=True)
     updated_at = fields.DatetimeField(auto_now=True)
 

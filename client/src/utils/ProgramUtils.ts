@@ -1,4 +1,5 @@
 
+import { ICaptureProgram } from '@/services/Captures';
 import { ILiveProgram } from '@/services/Programs';
 import { IRecordedProgram } from '@/services/Videos';
 import Utils, { dayjs } from '@/utils';
@@ -362,7 +363,10 @@ export class ProgramUtils {
      * @param key 番組情報のオブジェクトから取り出すプロパティのキー
      * @returns 装飾した文字列
      */
-    static decorateProgramInfo(program: ILiveProgram | IRecordedProgram | null, key: string): string {
+    static decorateProgramInfo(
+        program: ILiveProgram | IRecordedProgram | ICaptureProgram | null,
+        key: string,
+    ): string {
 
         // program が空でないかつ、program[key] が存在する
         if (program !== null && program[key] !== null) {
@@ -443,10 +447,22 @@ export class ProgramUtils {
      * @param is_short 時刻のみ返すかどうか
      * @returns 番組の放送時刻
      */
-    static getProgramTime(program: ILiveProgram | IRecordedProgram | null, is_short: boolean = false): string {
+    static getProgramTime(program: ILiveProgram | IRecordedProgram | ICaptureProgram | null, is_short: boolean = false): string {
 
         // program が空でなく、かつ番組時刻が初期値でない
         if (program !== null && program.start_time !== '2000-01-01T00:00:00+09:00') {
+
+            // キャプチャの番組は放送時間未定のことがあり、その場合は終了時刻と番組長が null になる
+            // 終了時刻が分からないので、放送時間未定として扱う
+            if (program.end_time === null || program.duration === null) {
+                const start_time_unfixed = dayjs(program.start_time);
+                if (is_short === true) {  // 時刻のみ
+                    return Utils.apply28HourClock(`${start_time_unfixed.format('HH:mm')} ～ --:--`);
+                }
+                return Utils.apply28HourClock(
+                    `${start_time_unfixed.format('YYYY/MM/DD (dd) HH:mm')} ～ --:-- (放送時間未定)`,
+                );
+            }
 
             // 放送時刻は EPG 上の番組時刻を使う
             // 録画ファイルの recording_start_time / recording_end_time は録画マージンや
