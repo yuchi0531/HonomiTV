@@ -417,7 +417,13 @@ class LiveDataBroadcastingManager implements PlayerManager {
             this.toggleRemoconButtonsLoading(false);
             return;
         }
-        this.live_psi_archived_data_decoder = await new LivePSIArchivedDataDecoderProxy(channels_store.channel.current, current_api_quality);
+        // 再生中の画質 URL に付与された入力ストリーム形式を PSI/SI 取得にも引き継ぐ
+        const stream_format = PlayerUtils.extractBS4KStreamFormatFromDPlayer(this.player);
+        this.live_psi_archived_data_decoder = await new LivePSIArchivedDataDecoderProxy(
+            channels_store.channel.current,
+            current_api_quality,
+            stream_format,
+        );
 
         // デコードを開始
         // デコーダーは Web Worker 上で実行される (コールバックを Comlink.proxy() で包むのがポイント)

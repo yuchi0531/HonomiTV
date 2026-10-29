@@ -125,19 +125,22 @@ class LiveEncodingTask:
         backend_type: str,
         channel: Channel,
         quality: str,
+        bs4k_stream_format: Literal['TLV', 'MPEG-TS'],
         debug_mode_ts_path: Any,
     ) -> bool:
         """
         BS4K のライブ視聴で MMT/TLV を直接 FFmpeg へ入力するかどうかを返す。
 
         Mirakurun の BS4K は通常 MMT/TLV を返すため、そのまま入力する。
-        ただし copy は dantto4k などで MPEG-TS (HEVC) へ変換済みのストリームを
-        想定しており、MMT/TLV として入力すると失敗する。copy は MPEG-TS 経路で扱う。
+        ただし dantto4k などで MPEG-TS (HEVC) へ変換している構成では、
+        decode=0 でも MPEG-TS が返るため MMT/TLV として入力すると失敗する。
+        クライアント設定 (bs4k_live_passthrough_mode) に対応する bs4k_stream_format で判断する。
 
         Args:
             backend_type (str): 受信バックエンド。
             channel (Channel): 視聴対象のチャンネル。
             quality (str): 要求された画質。
+            bs4k_stream_format (Literal['TLV', 'MPEG-TS']): BS4K の入力ストリーム形式。
             debug_mode_ts_path (Any): デバッグ用の TS ファイルパス (未設定なら None)。
 
         Returns:
@@ -148,7 +151,10 @@ class LiveEncodingTask:
             backend_type == 'Mirakurun' and
             channel.type == 'BS4K' and
             channel.is_radiochannel is False and
+            # copy は MPEG-TS 前提のため、形式の指定にかかわらず MMT/TLV 入力にしない
             quality != 'copy' and
+            # MPEG-TS が届く構成では MMT/TLV として入力できない
+            bs4k_stream_format == 'TLV' and
             debug_mode_ts_path is None
         )
 
@@ -873,6 +879,7 @@ class LiveEncodingTask:
             backend_type = BACKEND_TYPE,
             channel = channel,
             quality = self.live_stream.quality,
+            bs4k_stream_format = self.live_stream.encoding_options.bs4k_stream_format,
             debug_mode_ts_path = CONFIG.tv.debug_mode_ts_path,
         )
         if is_mmt_live_transcode is True:

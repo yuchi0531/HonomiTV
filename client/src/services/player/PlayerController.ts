@@ -728,13 +728,19 @@ class PlayerController {
                                 channels_store.channel.current.display_channel_id,
                             ));
                         }
+                        // BS4K の入力ストリーム形式をサーバーへ伝える
+                        // サーバーはこの値を見て MMT/TLV と MPEG-TS のどちらとして入力するかを決める
+                        // (dantto4k などで MPEG-TS へ変換している構成では必須)
+                        const stream_format_query = is_bs4k_channel === true ?
+                            `?stream_format=${this.bs4k_live_passthrough_mode === 'TLV' ? 'TLV' : 'MPEG-TS'}` : '';
+
                         // 画質リストを作成
                         for (const quality_name of LIVE_STREAMING_QUALITIES) {
                             qualities.push({
                                 // 1080p-60fps のみ、見栄えの観点から表示上 "1080p (60fps)" と表示する
                                 name: quality_name === '1080p-60fps' ? '1080p (60fps)' : quality_name,
                                 type: 'mpegts',
-                                url: `${streaming_api_base_url}/${build_api_quality(quality_name)}/mpegts`,
+                                url: `${streaming_api_base_url}/${build_api_quality(quality_name)}/mpegts${stream_format_query}`,
                             });
                         }
                     }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from app.config import Config
 from app.constants import (
@@ -19,6 +20,7 @@ class StreamEncodingOptions:
     Args:
         is_hevc_10bit_enabled (bool): HEVC 10bit を要求するクライアント向けのストリームかどうか
         is_24fps_mode_enabled (bool): 24fps モードを適用するストリームかどうか
+        bs4k_stream_format (Literal['TLV', 'MPEG-TS']): BS4K の入力ストリーム形式
     """
 
     # HEVC 10bit を要求するクライアント向けのストリームかどうか
@@ -30,12 +32,18 @@ class StreamEncodingOptions:
     ## 1080p-60fps では 60fps 化を優先し、24fps モードの要求があってもここでは無効にする
     is_24fps_mode_enabled: bool = False
 
+    # BS4K の入力ストリーム形式
+    ## TLV は MMT/TLV を直接入力し、MPEG-TS は dantto4k などで変換済みの MPEG-TS を入力する
+    ## クライアント設定 (bs4k_live_passthrough_mode) に対応し、BS4K 以外では使わない
+    bs4k_stream_format: Literal['TLV', 'MPEG-TS'] = 'TLV'
+
     @classmethod
     def fromRequest(
         cls,
         quality: QUALITY_TYPES,
         is_hevc_10bit_requested: bool,
         is_24fps_mode_requested: bool,
+        bs4k_stream_format: Literal['TLV', 'MPEG-TS'] = 'TLV',
     ) -> StreamEncodingOptions:
         """
         API で指定されたオプションから、実際に使うストリームオプションを作る
@@ -44,6 +52,7 @@ class StreamEncodingOptions:
             quality (QUALITY_TYPES): ベース画質
             is_hevc_10bit_requested (bool): クライアントが HEVC 10bit を要求しているかどうか
             is_24fps_mode_requested (bool): クライアントが 24fps モードを要求しているかどうか
+            bs4k_stream_format (Literal['TLV', 'MPEG-TS']): BS4K の入力ストリーム形式
 
         Returns:
             StreamEncodingOptions: 実際のストリーム生成に使うエンコードオプション
@@ -67,6 +76,7 @@ class StreamEncodingOptions:
         return cls(
             is_hevc_10bit_enabled = is_hevc_10bit_enabled,
             is_24fps_mode_enabled = is_24fps_mode_enabled,
+            bs4k_stream_format = bs4k_stream_format,
         )
 
     def buildSuffix(self) -> str:
@@ -86,6 +96,12 @@ class StreamEncodingOptions:
         # 24fps モードが有効なストリームだけ -24fps を付ける
         if self.is_24fps_mode_enabled is True:
             suffix += '-24fps'
+
+        # BS4K で MPEG-TS が届く構成は、TLV と別のライブストリームとして扱う
+        ## 同じ画質名でも入力形式が違うとエンコーダーの起動条件が変わるため、
+        ## ライブストリーム ID を分けて互いのセッションを壊さないようにする
+        if self.bs4k_stream_format == 'MPEG-TS':
+            suffix += '-mpegts'
 
         return suffix
 
