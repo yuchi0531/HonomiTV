@@ -7,13 +7,36 @@ import CaptureManager from '@/services/player/managers/CaptureManager';
 
 const mocks = vi.hoisted(() => ({loadFonts: vi.fn()}));
 vi.mock('@/workers/CaptureCompositorProxy', () => ({default: {loadFonts: mocks.loadFonts}}));
-vi.mock('@/utils', () => ({default: {time: () => 0}, dayjs: vi.fn(), dayjsOriginal: vi.fn()}));
+// ファイル名のマクロは日時に依存するため、dayjs だけは実物を使う
+vi.mock('@/utils', async () => {
+    const dayjsModule = await import('dayjs');
+    const durationPlugin = (await import('dayjs/plugin/duration')).default;
+    const utcPlugin = (await import('dayjs/plugin/utc')).default;
+    const timezonePlugin = (await import('dayjs/plugin/timezone')).default;
+    const dayjs = dayjsModule.default;
+    dayjs.extend(durationPlugin);
+    dayjs.extend(utcPlugin);
+    dayjs.extend(timezonePlugin);
+    dayjs.tz.setDefault('Asia/Tokyo');
+    return {
+        default: {time: () => 0},
+        dayjs: (value?: unknown) => dayjs(value as never),
+        dayjsOriginal: dayjs,
+    };
+});
+// テストごとに差し替えられるよう、チャンネル情報を外出しにする
+const channelsMock = vi.hoisted(() => ({value: {} as Record<string, unknown>}));
 vi.mock('@/stores/ChannelsStore', () => ({default: () => ({
     // バリデーションを通すための最小限のチャンネル情報
-    channel: {current: {is_radiochannel: false, id: 'gr011', name: 'テスト', service_id: 1, remocon_id: 1, program_present: null}},
+    channel: {current: {
+        is_radiochannel: false, id: 'gr011', name: 'テスト', service_id: 1, remocon_id: 1, program_present: null,
+        ...channelsMock.value,
+    }},
 })}));
 vi.mock('@/stores/PlayerStore', () => ({default: () => ({})}));
-vi.mock('@/stores/SettingsStore', () => ({default: () => ({settings: {}})}));
+// テストごとに差し替えられるよう、設定の中身を外出しにする
+const settingsMock = vi.hoisted(() => ({value: {} as Record<string, unknown>}));
+vi.mock('@/stores/SettingsStore', () => ({default: () => ({settings: settingsMock.value})}));
 vi.mock('@/services/Captures', () => ({default: {}}));
 vi.mock('mpeg2toh264/yadif', () => ({Deinterlacer: vi.fn()}));
 
@@ -171,5 +194,45 @@ describe('キャプチャのアスペクト比補正', () => {
         ).resolves.toBeUndefined();
         expect(notice).toHaveBeenCalled();
         expect(notice.mock.calls[0][0]).toContain('コメント表示をオンにしてください');
+    });
+});
+
+
+describe('キャプチャのファイル名のサニタイズ', () => {
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        settingsMock.value = {capture_filename_pattern: 'Capture_%event-name%'};
+    });
+
+    it('番組名の半角スラッシュとコロンを置換する', () => {
+        // 番組名に半角スラッシュが含まれると、そのままではサーバーに拒否されて保存できない
+        channelsMock.value = {
+            network_id: 1,
+            program_present: {
+                source: 'Broadcast', event_id: 100, title: 'FIFA/サッカー:決勝', description: '',
+                start_time: '2026-10-29T12:00:00+09:00', end_time: '2026-10-29T13:00:00+09:00',
+                duration: 3600,
+            },
+        };
+
+        const filename = CaptureManager.generateCaptureFilename();
+
+        // パス区切りとして解釈される文字が残らない
+        expect(filename).not.toContain('/');
+        expect(filename).toBe('Capture_FIFA_サッカー_決勝');
+    });
+
+    it('使える文字はそのまま残す', () => {
+        channelsMock.value = {
+            network_id: 1,
+            program_present: {
+                source: 'Broadcast', event_id: 100, title: '通常の番組名 (第3話)', description: '',
+                start_time: '2026-10-29T12:00:00+09:00', end_time: '2026-10-29T13:00:00+09:00',
+                duration: 3600,
+            },
+        };
+
+        expect(CaptureManager.generateCaptureFilename()).toBe('Capture_通常の番組名 (第3話)');
     });
 });

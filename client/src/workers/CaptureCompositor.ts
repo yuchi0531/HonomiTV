@@ -36,12 +36,13 @@ export interface ICaptureExifData {
     // 番組開始時刻から換算したキャプチャ位置 (秒)
     captured_playback_position: number;
     // チャンネルの network_id
-    // ネットテレビ (Jellyfin) 由来のチャンネルは放送波の識別子を持たないため null になる
-    network_id: number | null;
+    // ネットテレビ (Jellyfin) 由来のチャンネルは放送波の識別子を持たないため -1 になる
+    // サーバー側は -1 を「番組と結び付けない」の意味として受け付ける (null は受け付けない)
+    network_id: number;
     // チャンネルの service_id
-    service_id: number | null;
+    service_id: number;
     // 番組の event_id
-    event_id: number | null;
+    event_id: number;
     // 番組名
     title: string;
     // 番組概要

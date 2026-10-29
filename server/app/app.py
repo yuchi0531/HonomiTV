@@ -242,9 +242,13 @@ tortoise.contrib.fastapi.register_tortoise(
 
 # サーバーの起動時に実行する
 recorded_scan_task: RecordedScanTask | None = None
+# キャプチャフォルダの監視タスク
+## 停止時に参照するためグローバルに保持する
+capture_scan_task: CaptureScanTask | None = None
 @app.on_event('startup')
 async def Startup():
     global recorded_scan_task
+    global capture_scan_task
 
     # Linux の DRI render node を起動時に一度だけ検証し、CM 解析で共有する。
     await InitializeVAAPIHardwareDevices()
@@ -383,7 +387,12 @@ async def Shutdown():
     if CONFIG.general.backend == 'EDCB':
         await EDCBTuner.closeAll()
 
-    # 録画フォルダ監視タスクを停止
+    # 録画とキャプチャの監視タスクを停止する
+    ## DB 接続を閉じる前に止めないと、終了処理中に DB へアクセスしてトレースバックが出る
+    global capture_scan_task
+    if capture_scan_task is not None:
+        await capture_scan_task.stop()
+        capture_scan_task = None
     global recorded_scan_task
     if recorded_scan_task is not None:
         await recorded_scan_task.stop()
