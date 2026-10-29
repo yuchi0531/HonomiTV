@@ -386,6 +386,13 @@ class CaptureManager implements PlayerManager {
             return;
         }
 
+        // ネットテレビからザッピングした直後など、旧プレイヤーが破棄中で danmaku が未生成のことがある
+        // そのまま参照すると TypeError になるため、コメント付きキャプチャは利用できないものとして扱う
+        if (is_comment_composite === true && this.player.danmaku == null) {
+            this.player.notice('コメント表示をオンにしてください。', undefined, undefined, '#FF6F6A');
+            return;
+        }
+
         // コメントが表示されていないのにコメント付きでキャプチャしようとした
         if (is_comment_composite === true && this.player.danmaku!.showing === false) {
             this.player.notice('コメントを付けてキャプチャするには、コメント表示をオンにしてください。', undefined, undefined, '#FF6F6A');
@@ -516,9 +523,10 @@ class CaptureManager implements PlayerManager {
         if (result.capture_caption !== null) {
 
             // 生成した Blob をイベントリスナーに送信する
+            // 字幕なし版と同じ名前を渡すと、ダウンロード時に上書きされてしまう
             player_store.event_emitter.emit('CaptureCompleted', {
                 capture: result.capture_caption,
-                filename: filename_normal,
+                filename: filename_caption,
             });
 
             // キャプチャの保存先: ブラウザでダウンロード or 両方
@@ -762,7 +770,13 @@ class CaptureManager implements PlayerManager {
 
         // 正規表現を使用した一括置換
         const regex = new RegExp(sorted_macros.map(macro => macro.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
-        return filename_pattern.replace(regex, match => replacements[match]);
+        const filename = filename_pattern.replace(regex, match => replacements[match]);
+
+        // ファイル名に使えない文字を置換する
+        // 番組名には半角スラッシュが含まれることがあり、そのまま渡すとサーバー側で
+        // ディレクトリとして解釈されて保存に失敗する (親ディレクトリ不在で FileNotFoundError)
+        // Windows でも使えない文字をまとめて対象にし、保存先の OS によらず安全にする
+        return filename.replace(/[/\\:*?"<>|]/g, '_');
     }
 }
 

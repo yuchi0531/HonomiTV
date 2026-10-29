@@ -6,6 +6,7 @@ from typing import Annotated, cast
 
 import puremagic
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from puremagic import PureError
 
 from app import logging
 from app.config import Config
@@ -34,7 +35,16 @@ def CaptureUploadAPI(
 
     # 画像が JPEG または PNG かをチェック
     ## 万が一悪意ある攻撃者から危険なファイルを送り込まれないように
-    mimetype: str = puremagic.magic_stream(image.file)[0].mime_type
+    ## 空のファイルや画像以外のデータでは puremagic が例外を投げるため、
+    ## 500 ではなく 422 として扱い、クライアントが detail で分岐できるようにする
+    try:
+        mimetype: str = puremagic.magic_stream(image.file)[0].mime_type
+    except (PureError, IndexError, ValueError):
+        logging.error('[CapturesRouter][CaptureUploadAPI] Failed to detect the uploaded file type.')
+        raise HTTPException(
+            status_code = status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail = 'Please upload JPEG or PNG image',
+        )
     if mimetype != 'image/jpeg' and mimetype != 'image/png':
         logging.error('[CapturesRouter][CaptureUploadAPI] Invalid image file was uploaded.')
         raise HTTPException(

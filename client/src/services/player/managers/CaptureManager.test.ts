@@ -8,7 +8,10 @@ import CaptureManager from '@/services/player/managers/CaptureManager';
 const mocks = vi.hoisted(() => ({loadFonts: vi.fn()}));
 vi.mock('@/workers/CaptureCompositorProxy', () => ({default: {loadFonts: mocks.loadFonts}}));
 vi.mock('@/utils', () => ({default: {time: () => 0}, dayjs: vi.fn(), dayjsOriginal: vi.fn()}));
-vi.mock('@/stores/ChannelsStore', () => ({default: () => ({})}));
+vi.mock('@/stores/ChannelsStore', () => ({default: () => ({
+    // バリデーションを通すための最小限のチャンネル情報
+    channel: {current: {is_radiochannel: false, id: 'gr011', name: 'テスト', service_id: 1, remocon_id: 1, program_present: null}},
+})}));
 vi.mock('@/stores/PlayerStore', () => ({default: () => ({})}));
 vi.mock('@/stores/SettingsStore', () => ({default: () => ({settings: {}})}));
 vi.mock('@/services/Captures', () => ({default: {}}));
@@ -146,5 +149,27 @@ describe('キャプチャのアスペクト比補正', () => {
         const source = createBitmap(1920, 1082);
 
         expect(await fix(manager, source)).toBe(source);
+    });
+
+    it('danmaku が未生成でもコメント付きキャプチャで TypeError にならない', async () => {
+        // ネットテレビからザッピングした直後は、旧プレイヤーの danmaku が未生成のことがある
+        const container = document.createElement('div');
+        container.innerHTML = '<div class="dplayer-player-restart-icon"></div>';
+        const notice = vi.fn();
+        const player = {
+            container, video: {videoWidth: 1920, videoHeight: 1080},
+            // danmaku が未定義
+            danmaku: undefined, notice,
+        } as unknown as DPlayer;
+        const manager = new CaptureManager(player, 'Live');
+        await manager.init();
+
+        // コメント付きキャプチャを要求しても例外にならず、案内が表示される
+        await expect(
+            (manager as unknown as {captureAndSave: (is_comment: boolean) => Promise<void>})
+                .captureAndSave(true),
+        ).resolves.toBeUndefined();
+        expect(notice).toHaveBeenCalled();
+        expect(notice.mock.calls[0][0]).toContain('コメント表示をオンにしてください');
     });
 });
