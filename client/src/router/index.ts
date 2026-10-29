@@ -94,22 +94,6 @@ const router = createRouter({
             component: () => import('@/views/Reservations/Reservations.vue'),
         },
         {
-            // キャプチャギャラリー・検索結果・フォルダ表示は、どれも同じ一覧画面で URL から表示条件を決める
-            path: '/captures/',
-            name: 'Captures',
-            component: () => import('@/views/Captures.vue'),
-        },
-        {
-            path: '/captures/search',
-            name: 'Captures Search',
-            component: () => import('@/views/Captures.vue'),
-        },
-        {
-            path: '/captures/folders/:folder_id(\\d+)',
-            name: 'Captures Folder',
-            component: () => import('@/views/Captures.vue'),
-        },
-        {
             path: '/mylist/',
             name: 'Mylist',
             component: () => import('@/views/Mylist.vue'),

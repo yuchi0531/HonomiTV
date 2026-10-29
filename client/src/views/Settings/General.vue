@@ -318,7 +318,6 @@ export default defineComponent({
                 {title: 'シリーズ', value: 'series'},
                 {title: '番組表', value: 'timetable'},
                 {title: '録画予約', value: 'reservations'},
-                {title: 'キャプチャ', value: 'captures'},
                 {title: 'オフライン保存', value: 'offline'},
                 {title: 'マイリスト', value: 'mylist'},
                 {title: '視聴履歴', value: 'watched_history'},

@@ -282,7 +282,7 @@ export const ILocalClientSettingsDefault: ILocalClientSettings = {
     bs4k_live_passthrough_mode: 'TLV',
     video_list_grid_view: false,
     navigation_visible_items: [
-        'series', 'timetable', 'reservations', 'captures', 'offline', 'mylist', 'watched_history',
+        'series', 'timetable', 'reservations', 'offline', 'mylist', 'watched_history',
     ],
     // テレビを 24fps モードで視聴する (モバイル回線時)  (Default: オフ) (同期無効)
     tv_24fps_mode_cellular: false,

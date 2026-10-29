@@ -36,6 +36,7 @@ export interface ICaptureExifData {
     // 番組開始時刻から換算したキャプチャ位置 (秒)
     captured_playback_position: number;
     // チャンネルの network_id
+    // ネットテレビ (Jellyfin) 由来のチャンネルは放送波の識別子を持たないため null になる
     network_id: number | null;
     // チャンネルの service_id
     service_id: number | null;
@@ -100,8 +101,8 @@ class CaptureCompositor implements ICaptureCompositor {
     // フォントをロード済みかどうか
     private static is_loaded_fonts: boolean = false;
 
-    // 初期化とコメント付きキャプチャが同時に要求したフォントのロードを共有する
-    // 完了後は解放し、失敗した場合も次のキャプチャ操作で再試行できるようにする
+    // 進行中のフォントロード
+    // 初期化とキャプチャが重なっても、同じフォントを重複してダウンロードしないために保持する
     private static loading_fonts: Promise<void> | null = null;
 
     // CaptureCompositor の合成オプション

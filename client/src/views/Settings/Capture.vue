@@ -19,10 +19,10 @@
                         </li>
                         <li>
                             <strong>サーバーにアップロード</strong>：サーバー設定で指定したフォルダに保存します。<br>
-                            どのデバイスから撮っても1つのフォルダにまとめて保存できます。<br>
-                            サーバーにアップロードしたキャプチャは、サイドバーの [キャプチャ] から一覧表示・検索・フォルダ整理ができます。削除できるのは管理者アカウントのみです。
+                            どのデバイスから撮っても1つのフォルダにまとめて保存できます。他のデバイスからキャプチャを見るには、保存先フォルダをネットワーク共有するか、サーバー PC に直接アクセスする必要があります。
                         </li>
                     </ul>
+                    <p class="settings__item-note">※ 将来的には、サーバー PC に保存されたキャプチャを KonomiTV 上で閲覧できる機能を追加予定です。</p>
                 </div>
                 <v-select class="settings__item-form" color="primary" variant="outlined" hide-details
                     :density="is_form_dense ? 'compact' : 'default'"

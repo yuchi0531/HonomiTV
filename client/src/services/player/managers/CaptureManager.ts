@@ -213,6 +213,7 @@ class CaptureManager implements PlayerManager {
                 captured_playback_position: -1,  // 後の処理で設定するが、ここでは実装上の都合で -1 を入れておく
                 network_id: channels_store.channel.current.network_id,
                 service_id: channels_store.channel.current.service_id,
+                // ネットテレビ (Jellyfin) の番組は放送波のイベント ID を持たない
                 event_id: channels_store.channel.current.program_present?.source === 'Broadcast' ?
                     channels_store.channel.current.program_present.event_id : null,
                 title: channels_store.channel.current.program_present?.title ?? '放送休止',
@@ -385,13 +386,8 @@ class CaptureManager implements PlayerManager {
             return;
         }
 
-        // 実況を起動しないネットテレビではコメント付きキャプチャも利用できない。
-        if (is_comment_composite === true && this.player.danmaku == null) {
-            this.player.notice('ネットテレビではコメント付きキャプチャを利用できません。', undefined, undefined, '#FF6F6A');
-            return;
-        }
         // コメントが表示されていないのにコメント付きでキャプチャしようとした
-        if (is_comment_composite === true && this.player.danmaku?.showing === false) {
+        if (is_comment_composite === true && this.player.danmaku!.showing === false) {
             this.player.notice('コメントを付けてキャプチャするには、コメント表示をオンにしてください。', undefined, undefined, '#FF6F6A');
             return;
         }
@@ -609,6 +605,7 @@ class CaptureManager implements PlayerManager {
         // マクロ置換に必要なチャンネル情報の型
         interface CaptureChannelInfo {
             name: string;
+            // ネットテレビ (Jellyfin) 由来のチャンネルは放送波の識別子を持たないため null になる
             service_id: number | null;
             remocon_id: number | null;
         }
@@ -669,6 +666,7 @@ class CaptureManager implements PlayerManager {
                     remocon_id: current_channel.remocon_id,
                 };
                 program = {
+                    // ネットテレビ (Jellyfin) の番組は放送波のイベント ID を持たない
                     event_id: current_program.source === 'Broadcast' ? current_program.event_id : null,
                     title: current_program.title,
                     start_time: current_program.start_time,
@@ -743,6 +741,7 @@ class CaptureManager implements PlayerManager {
             // チャンネル名
             '%channel-name%': channel.name,
             // リモコン番号
+            // ネットテレビにはリモコン番号が無いため unknown にする
             '%channel-no%': channel.remocon_id?.toString() ?? 'unknown',
             // リモコン番号 (2桁)
             '%channel-no2%': channel.remocon_id?.toString().padStart(2, '0') ?? 'unknown',
