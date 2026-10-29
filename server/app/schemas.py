@@ -298,6 +298,9 @@ class ThumbnailImageInfo(TypedDict):
     format: Literal['WebP']
     width: int
     height: int
+    # 代表サムネイルを差し替えるたびに増える revision
+    ## サムネイル画像の URL に含めてキャッシュを無効化するために使う
+    revision: int
 
 class ThumbnailTileInfo(TypedDict):
     format: Literal['WebP']
@@ -624,8 +627,99 @@ class BlueskyAccount(PydanticModel):
     created_at: datetime
     updated_at: datetime
 
+# ***** キャプチャ *****
+
+class Captures(BaseModel):
+    captures: list[Capture]
+    programs: list[CaptureProgram]
+    next_cursor: str | None
+
+class Capture(BaseModel):
+    id: int
+    file_hash: str
+    file_size: int
+    captured_at: datetime
+    broadcast_at: datetime | None
+    image_width: int
+    image_height: int
+    metadata_status: Literal['Parsed', 'NoMetadata', 'Invalid']
+    playback_position: float | None
+    caption_text: str | None
+    is_caption_composited: bool
+    is_comment_composited: bool
+    capture_program_id: int | None
+    is_favorite: bool | None
+    tag_ids: list[int] | None
+
+class CaptureProgram(BaseModel):
+    id: int
+    network_id: int
+    service_id: int
+    event_id: int
+    start_time: datetime
+    # 放送時間未定の番組で撮ったキャプチャだけで作った放送回は、終了時刻と番組長が不明なので null になる
+    end_time: datetime | None
+    duration: float | None
+    title: str
+    description: str
+    channel: CaptureChannel | None
+    recorded_program_ids: list[int]
+
+class CaptureChannel(BaseModel):
+    id: str
+    display_channel_id: str
+    name: str
+    type: str
+
+class CaptureSections(BaseModel):
+    sections: list[CaptureSection]
+    total: int
+
+class CaptureSection(BaseModel):
+    date: str
+    count: int
+
+class CapturePrograms(BaseModel):
+    programs: list[CaptureProgramAlbum]
+    next_cursor: str | None
+
+class CaptureProgramAlbum(CaptureProgram):
+    capture_count: int
+    cover_capture: Capture
+
+class CaptureTag(BaseModel):
+    id: int
+    name: str
+    capture_count: int
+    created_at: datetime
+    updated_at: datetime
+
+class CaptureDeleteResult(BaseModel):
+    deleted_capture_ids: list[int]
+    failed_capture_ids: list[int]
+
+class CaptureDetail(Capture):
+    program: CaptureProgram | None
+    files: list[CaptureFile]
+
+class CaptureFile(BaseModel):
+    file_name: str
+    file_path: str
+    status: Literal['Available', 'Missing', 'Invalid']
+
 # モデルに関連しない API リクエストの構造を表す Pydantic モデル
 ## リクエストボティの JSON 構造と一致する
+
+# ***** キャプチャ *****
+
+class CaptureTagRequest(BaseModel):
+    name: Annotated[str, Field(min_length=1, max_length=255, pattern=r'\S')]
+
+class CaptureIDsRequest(BaseModel):
+    capture_ids: list[int]
+
+class VideoThumbnailUpdateRequest(BaseModel):
+    capture_id: Annotated[int, Field(gt=0)]
 
 # ***** 録画予約 *****
 
@@ -1113,6 +1207,13 @@ class TwitterGraphQLAPIEndpointInfo(BaseModel):
 class UserAccessToken(BaseModel):
     access_token: str
     token_type: str
+
+# ***** メンテナンス *****
+
+class MaintenanceTaskStatus(BaseModel):
+    is_running: bool = False
+    processed_count: int = 0
+    total_count: int = 0
 
 # ***** バージョン情報 *****
 

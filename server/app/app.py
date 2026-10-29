@@ -19,6 +19,7 @@ from app.constants import (
     QUALITY,
     VERSION,
 )
+from app.metadata.CaptureScanTask import CaptureScanTask
 from app.metadata.RecordedScanTask import RecordedScanTask
 from app.metadata.SeriesIndexer import SeriesIndexer
 from app.models.Channel import Channel
@@ -281,6 +282,11 @@ async def Startup():
     ## 録画中ファイルはバックエンドしか状態を知らないため、フォルダ監視だけでは追いかけ再生に反映できない。
     if CONFIG.general.backend != 'Mirakurun':
         await recorded_scan_task.startBackendRecordingSync()
+
+    # キャプチャフォルダの一括スキャンと監視を開始する
+    ## 保存先フォルダに外部から置かれた画像も取り込むため、録画フォルダと同じくフォルダを正として検出する
+    capture_scan_task = CaptureScanTask()
+    await capture_scan_task.start()
 
 # Amatsukaze のエンコード完了を監視する
 ## Amatsukaze 側の設定で有効化されている場合のみ、キューを定期的に確認する

@@ -53,7 +53,9 @@ class VideoAnalysisResponsivenessTest(unittest.IsolatedAsyncioTestCase):
                 dict[str, bool]: 解析開始処理の完了状態。
             """
 
-            await DriveIOLimiter.getSemaphore(anyio.Path('/recordings/video.ts'))
+            # ディスクの列挙は同期 I/O なので、実際の呼び出し元と同じくスレッドへ逃がす
+            ## これにより列挙が待機中でも、同じイベントループ上のほかの API は応答できる
+            await asyncio.to_thread(DriveIOLimiter.getSemaphore, anyio.Path('/recordings/video.ts'))
             return {'scanned': True}
 
         @app.get('/ping')

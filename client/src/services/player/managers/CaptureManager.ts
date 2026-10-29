@@ -208,6 +208,15 @@ class CaptureManager implements PlayerManager {
         // ライブ視聴: 現在視聴中のチャンネル情報・番組情報を EXIF メタデータに設定
         let capture_exif_data: ICaptureExifData;
         if (this.playback_mode === 'Live') {
+            // 放送時間未定の番組は duration が Infinity で、end_time には便宜上 start_time と同じ時刻が入っているため、どちらも null にする
+            // Infinity は JSON にできないので、そのまま書き込むと JSON.stringify() で null になってしまう
+            const program_present = channels_store.channel.current.program_present;
+            let end_time: string | null = program_present?.end_time ?? '2000-01-01T00:00:00+09:00';
+            let duration: number | null = program_present?.duration ?? 0;
+            if (duration === Infinity) {
+                end_time = null;
+                duration = null;
+            }
             capture_exif_data = {
                 captured_at: captured_at,
                 captured_playback_position: -1,  // 後の処理で設定するが、ここでは実装上の都合で -1 を入れておく
@@ -219,8 +228,8 @@ class CaptureManager implements PlayerManager {
                 title: channels_store.channel.current.program_present?.title ?? '放送休止',
                 description: channels_store.channel.current.program_present?.description ?? '',
                 start_time: channels_store.channel.current.program_present?.start_time ?? '2000-01-01T00:00:00+09:00',
-                end_time: channels_store.channel.current.program_present?.end_time ?? '2000-01-01T00:00:00+09:00',
-                duration: channels_store.channel.current.program_present?.duration ?? 0,
+                end_time: end_time,
+                duration: duration,
                 caption_text: caption_text,
                 is_caption_composited: false,  // 字幕が合成されているか (実際の状態に合わせて CaptureCompositor 側で上書きされる)
                 is_comment_composited: false,  // コメントが合成されているか (実際の状態に合わせて CaptureCompositor 側で上書きされる)
@@ -248,10 +257,16 @@ class CaptureManager implements PlayerManager {
         // ライブ視聴: 現在進行形で放送されているので、番組開始時刻からの経過時間 (現在時刻 - 番組開始時刻) を設定する
         if (this.playback_mode === 'Live') {
             capture_exif_data.captured_playback_position = dayjs().diff(dayjs(capture_exif_data.start_time), 'second', true);
-        // ビデオ視聴: 動画の現在の再生位置から、録画開始マージンを引いた値を設定する
-        // これで (録画開始マージンが取得できていない場合以外は) ライブ視聴時と比較可能な値になる
+        // ビデオ視聴: 動画の現在の再生位置から、番組の開始時刻に対する録画の開始の早さ (録画開始マージン) を引いた値を設定する
+        // これで (録画の開始時刻が取得できていない場合以外は) ライブ視聴時と比較可能な値になる
+        // 番組の途中から録画した場合は録画開始マージンが 0 に丸められているので、番組の開始時刻と録画の開始時刻の差から求める
         } else {
-            capture_exif_data.captured_playback_position = this.player.video.currentTime - player_store.recorded_program.recording_start_margin;
+            const recorded_program = player_store.recorded_program;
+            let recording_start_offset = recorded_program.recording_start_margin;
+            if (recorded_program.recorded_video.recording_start_time !== null) {
+                recording_start_offset = (dayjs(recorded_program.start_time).valueOf() - dayjs(recorded_program.recorded_video.recording_start_time).valueOf()) / 1000;
+            }
+            capture_exif_data.captured_playback_position = this.player.video.currentTime - recording_start_offset;
         }
 
         return capture_exif_data;
@@ -386,6 +401,7 @@ class CaptureManager implements PlayerManager {
             return;
         }
 
+        // コメントが表示されていないのにコメント付きでキャプチャしようとした
         // ネットテレビからザッピングした直後など、旧プレイヤーが破棄中で danmaku が未生成のことがある
         // そのまま参照すると TypeError になるため、コメント付きキャプチャは利用できないものとして扱う
         if (is_comment_composite === true && this.player.danmaku == null) {
@@ -523,10 +539,9 @@ class CaptureManager implements PlayerManager {
         if (result.capture_caption !== null) {
 
             // 生成した Blob をイベントリスナーに送信する
-            // 字幕なし版と同じ名前を渡すと、ダウンロード時に上書きされてしまう
             player_store.event_emitter.emit('CaptureCompleted', {
                 capture: result.capture_caption,
-                filename: filename_caption,
+                filename: filename_normal,
             });
 
             // キャプチャの保存先: ブラウザでダウンロード or 両方
@@ -770,13 +785,7 @@ class CaptureManager implements PlayerManager {
 
         // 正規表現を使用した一括置換
         const regex = new RegExp(sorted_macros.map(macro => macro.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
-        const filename = filename_pattern.replace(regex, match => replacements[match]);
-
-        // ファイル名に使えない文字を置換する
-        // 番組名には半角スラッシュが含まれることがあり、そのまま渡すとサーバー側で
-        // ディレクトリとして解釈されて保存に失敗する (親ディレクトリ不在で FileNotFoundError)
-        // Windows でも使えない文字をまとめて対象にし、保存先の OS によらず安全にする
-        return filename.replace(/[/\\:*?"<>|]/g, '_');
+        return filename_pattern.replace(regex, match => replacements[match]);
     }
 }
 

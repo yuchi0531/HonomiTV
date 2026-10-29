@@ -117,7 +117,7 @@ class ThumbnailRegenerationTest(unittest.IsolatedAsyncioTestCase):
                 return_value = SimpleNamespace(generateAndSave = generate),
             ),
             patch('app.metadata.RecordedScanTask.ProcessLimiter.getSemaphore', return_value = BuildAsyncContextManager()),
-            patch('app.metadata.RecordedScanTask.DriveIOLimiter.getSemaphore', AsyncMock(return_value = BuildAsyncContextManager())),
+            patch('app.metadata.RecordedScanTask.DriveIOLimiter.getSemaphore', return_value = BuildAsyncContextManager()),
         ):
             await self.scan_task._RecordedScanTask__regenerateThumbnailOnly(program)
 
@@ -163,7 +163,7 @@ class ThumbnailRegenerationTest(unittest.IsolatedAsyncioTestCase):
                 return_value = SimpleNamespace(generateAndSave = generate),
             ),
             patch('app.metadata.RecordedScanTask.ProcessLimiter.getSemaphore', return_value = BuildAsyncContextManager()),
-            patch('app.metadata.RecordedScanTask.DriveIOLimiter.getSemaphore', AsyncMock(return_value = BuildAsyncContextManager())),
+            patch('app.metadata.RecordedScanTask.DriveIOLimiter.getSemaphore', return_value = BuildAsyncContextManager()),
         ):
             await self.scan_task._RecordedScanTask__regenerateMissingThumbnails()
 
