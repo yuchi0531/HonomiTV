@@ -41,7 +41,7 @@ from app.metadata.TSInfoAnalyzer import TSInfoAnalyzer
 from app.models.Capture import Capture, CaptureFile, CaptureProgram
 from app.models.RecordedProgram import RecordedProgram
 from app.models.User import User
-from app.routers.UsersRouter import GetCurrentAdminUser
+from app.routers.UsersRouter import GetCurrentAdminUser, GetCurrentUser
 from app.utils.DisconnectAwareFileResponse import DisconnectAwareFileResponse
 from app.utils.DriveIOLimiter import DriveIOLimiter
 from app.utils.JikkyoClient import JikkyoClient
@@ -1693,6 +1693,7 @@ async def VideoThumbnailAPI(
 async def VideoThumbnailUpdateAPI(
     body: schemas.VideoThumbnailUpdateRequest,
     recorded_program: Annotated[RecordedProgram, Depends(GetRecordedProgram)],
+    current_user: Annotated[User, Depends(GetCurrentUser)],
 ):
     """
     指定された録画番組の代表サムネイル画像を、同じ放送回で撮ったキャプチャに差し替える。<br>
