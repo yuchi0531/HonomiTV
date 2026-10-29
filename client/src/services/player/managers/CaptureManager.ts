@@ -220,10 +220,14 @@ class CaptureManager implements PlayerManager {
             capture_exif_data = {
                 captured_at: captured_at,
                 captured_playback_position: -1,  // 後の処理で設定するが、ここでは実装上の都合で -1 を入れておく
-                network_id: channels_store.channel.current.network_id,
-                service_id: channels_store.channel.current.service_id,
+                // ネットテレビ (Jellyfin) のチャンネルは放送波の識別子を持たない
+                // サーバーは -1 を「番組と結び付けない」として受け付けるため、null ではなく -1 を入れる
+                network_id: channels_store.channel.current.network_id ?? -1,
+                service_id: channels_store.channel.current.service_id ?? -1,
+                // ネットテレビ (Jellyfin) の番組は放送波のイベント ID を持たない
+                // サーバーは -1 を「番組と結び付けない」として受け付けるため、null ではなく -1 を入れる
                 event_id: channels_store.channel.current.program_present?.source === 'Broadcast' ?
-                    channels_store.channel.current.program_present.event_id : null,
+                    channels_store.channel.current.program_present.event_id : -1,
                 title: channels_store.channel.current.program_present?.title ?? '放送休止',
                 description: channels_store.channel.current.program_present?.description ?? '',
                 start_time: channels_store.channel.current.program_present?.start_time ?? '2000-01-01T00:00:00+09:00',
@@ -489,9 +493,10 @@ class CaptureManager implements PlayerManager {
         if (result.capture_caption !== null) {
 
             // 生成した Blob をイベントリスナーに送信する
+            // 字幕なし版と同じ名前を渡すと、ダウンロード時に上書きされてしまう
             player_store.event_emitter.emit('CaptureCompleted', {
                 capture: result.capture_caption,
-                filename: filename_normal,
+                filename: filename_caption,
             });
 
             // キャプチャの保存先: ブラウザでダウンロード or 両方
@@ -732,7 +737,13 @@ class CaptureManager implements PlayerManager {
 
         // 正規表現を使用した一括置換
         const regex = new RegExp(sorted_macros.map(macro => macro.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
-        return filename_pattern.replace(regex, match => replacements[match]);
+        const filename = filename_pattern.replace(regex, match => replacements[match]);
+
+        // ファイル名に使えない文字を置換する
+        // 番組名には半角スラッシュが含まれることがあり、そのまま渡すとサーバー側で
+        // 不正なファイル名として弾かれ、キャプチャが保存されない
+        // Windows でも使えない文字をまとめて対象にし、保存先の OS によらず安全にする
+        return filename.replace(/[/\\:*?"<>|]/g, '_');
     }
 }
 

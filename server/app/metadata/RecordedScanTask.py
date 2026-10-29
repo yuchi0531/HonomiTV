@@ -509,6 +509,21 @@ class RecordedScanTask:
         self._is_batch_scan_running = True
         self.batch_scan_status = schemas.MaintenanceTaskStatus(is_running=True)
 
+        # 例外やキャンセルで途中終了しても実行中の状態を解除し、次回のスキャンを実行できるようにする
+        try:
+            await self.__runBatchScan()
+        finally:
+            self._is_batch_scan_running = False
+            # 進捗の件数はそのまま残し、完了後に何件処理したかを確認できるようにする
+            self.batch_scan_status.is_running = False
+
+    async def __runBatchScan(self) -> None:
+        """
+        録画フォルダ以下の一括スキャンの本体
+
+        runBatchScan() から呼ばれ、実行中の状態の管理は呼び出し元が行う。
+        """
+
         # 現在登録されている全ての RecordedVideo レコードの情報をキャッシュ
         ## すべての情報をキャッシュすると key_frames フィールドのデータ量が大きすぎてメモリとディスク I/O を大量に食うため、
         ## 必要最低限の情報のみをキャッシュする
@@ -774,11 +789,7 @@ class RecordedScanTask:
         # 変更のない既存録画も含め、確定的に解析できる番組を Series ページへ反映する
         await SeriesIndexer.rebuild()
         logging.info('Batch scan of recording folders has been completed.')
-        self._is_batch_scan_running = False
 
-        # 実行中の状態を解除する
-        ## 進捗の件数はそのまま残し、完了後に何件処理したかを確認できるようにする
-        self.batch_scan_status.is_running = False
         # 初回バッチスキャン完了後は通知を有効にする
         self._is_initial_scan = False
 

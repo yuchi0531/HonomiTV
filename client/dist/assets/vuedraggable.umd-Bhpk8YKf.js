@@ -1,4 +1,8 @@
+<<<<<<<< HEAD:client/dist/assets/vuedraggable.umd-Bhpk8YKf.js
 import{br as On,bs as pt,bt as Ae,bu as Kn,bv as vi,bw as za,ax as Do,bx as Pt,by as Qa,bz as Mo,bA as Za,bB as Ct,bC as Lo,bD as qi,bE as ka,bF as qa,bG as _a,bH as es,bI as ts,bJ as Or,bK as ns,bL as Ir,bM as rs,bN as is,aG as os}from"./index-DYXJkYbV.js";var _n={exports:{}},Yr={exports:{}},Jr={};/**
+========
+import{bs as On,bt as pt,bu as Ae,bv as Kn,bw as vi,bx as za,ax as Do,by as Pt,bz as Qa,bA as Mo,bB as Za,bC as Ct,bD as Lo,bE as qi,bF as ka,bG as qa,bH as _a,bI as es,bJ as ts,bK as Or,bL as ns,bM as Ir,bN as rs,bO as is,aG as os}from"./index-DjVPih8R.js";var _n={exports:{}},Yr={exports:{}},Jr={};/**
+>>>>>>>> 9cc7b6fd (fix: Restore the fork's capture fixes and clean up the scan lifecycle):client/dist/assets/vuedraggable.umd-Tx_BUJo2.js
 * @vue/compiler-core v3.5.38
 * (c) 2018-present Yuxi (Evan) You and Vue contributors
 * @license MIT
