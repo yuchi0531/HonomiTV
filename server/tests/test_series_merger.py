@@ -75,12 +75,24 @@ class SeriesMergerTest(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual((actual['bangumi_subject_id'], actual['bangumi_episode_id']), (616808, 1746074))
                 on_air = await client.get('/api/series/on-air')
                 self.assertEqual(on_air.status_code, 200, on_air.text)
-                self.assertEqual(on_air.json(), {'series_list': [{
+                # 放送中一覧はシーズンごとにまとめて返す
+                expected_on_air = {
                     'id': series.id, 'title': '作品', 'thumbnail_recorded_program_ids': [], 'channel_ids': [],
                     'recorded_episodes_count': 2, 'missing_episodes_count': 11, 'partially_recorded_episodes_count': 0,
                     'weekday': now.weekday(), 'broadcast_time': f'{now.hour:02d}:{(now.minute // 5) * 5:02d}',
                     'latest_broadcast_at': now.isoformat(),
-                }]})
+                }
+                on_air_body = on_air.json()
+                on_air_items = [
+                    item for season in on_air_body['seasons'] for item in season['series_list']
+                ]
+                self.assertEqual(on_air_items, [expected_on_air])
+                # 現在のシーズンに含まれている
+                current = next(
+                    season for season in on_air_body['seasons']
+                    if season['season_id'] == on_air_body['current_season_id']
+                )
+                self.assertIn(series.id, [item['id'] for item in current['series_list']])
 
     async def asyncSetUp(self) -> None:
         """

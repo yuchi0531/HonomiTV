@@ -52,6 +52,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pyright>=1.1.403,<2",
+    "pytest>=8.0.0,<9",
     "ruff>=0.9.1,<1.0.0",
 ]
 
@@ -64,6 +65,11 @@ update-thirdparty = "python -m misc.UpdateThirdparty latest"
 
 [tool.uv]
 package = false
+
+[tool.pytest.ini_options]
+# unittest 形式のテストと同じく、server/ を起点に app パッケージを解決する
+pythonpath = ["."]
+testpaths = ["tests"]
 
 [tool.aerich]
 tortoise_orm = "app.constants.DATABASE_CONFIG"
