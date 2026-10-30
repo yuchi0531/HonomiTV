@@ -229,6 +229,12 @@ class LiveEncodingTask:
         if video_width == 1440 and video_height == 1080 and is_fullhd_channel is True:
             video_width = 1920
 
+        ## 出力ピクセルのアスペクト比 (SAR)
+        ## 1440×1080 は 4:3 の画素に SAR 4:3 を付けて 16:9 として表示する解像度なので、
+        ## SAR を明示しないと 4:3 の正方形画素として扱われ、16:9 の画面で横に黒帯が出る
+        ## 1920×1080 や 1280×720 などは正方形画素 (SAR 1:1) のまま出力する
+        video_sar = '4/3' if video_width * 3 == video_height * 4 else '1/1'
+
         ## 最大 GOP 長 (秒)
         ## 30fps なら ×30 、 60fps なら ×60 された値が --gop-len で使われる
         gop_length_second = self.GOP_LENGTH_SECONDS_H264
@@ -239,22 +245,22 @@ class LiveEncodingTask:
         ## BS4K は 60p (プログレッシブ) で放送されているので、インターレース解除を行わず 60fps でエンコードする
         if channel_type == "BS4K":
             # BS4K の 10-bit 入力を H.264 High / H.265 Main が受け付ける 8-bit へ明示的に変換する
-            options.append(f'-vf scale={video_width}:{video_height},format=yuv420p')
+            options.append(f'-vf scale={video_width}:{video_height},setsar={video_sar},format=yuv420p')
             options.append(f'-r 60000/1001 -g {int(gop_length_second * 60)}')
         else:
             ## インターレース解除 (60i → 60p (フレームレート: 60fps))
             if QUALITY[quality].is_60fps is True:
-                options.append(f'-vf yadif=mode=1:parity=-1:deint=1,scale={video_width}:{video_height}')
+                options.append(f'-vf yadif=mode=1:parity=-1:deint=1,scale={video_width}:{video_height},setsar={video_sar}')
                 options.append(f'-r 60000/1001 -g {int(gop_length_second * 60)}')
             ## インターレース解除 (60i → 30p (フレームレート: 30fps))
             else:
                 # 24fps モードでは、テレシネ由来の重複フレームを取り除いて 24/30p 混合 VFR で出力する
                 ## dejudder を併用すると、24fps 区間の PTS が 41.7ms 間隔に均されて本来の 24fps に近い時刻列になる
                 if self.live_stream.encoding_options.is_24fps_mode_enabled is True:
-                    options.append(f'-vf pullup,dejudder,scale={video_width}:{video_height}')
+                    options.append(f'-vf pullup,dejudder,scale={video_width}:{video_height},setsar={video_sar}')
                     options.append(f'-fps_mode vfr -g {int(gop_length_second * 30)}')
                 else:
-                    options.append(f'-vf yadif=mode=0:parity=-1:deint=1,scale={video_width}:{video_height}')
+                    options.append(f'-vf yadif=mode=0:parity=-1:deint=1,scale={video_width}:{video_height},setsar={video_sar}')
                     options.append(f'-r 30000/1001 -g {int(gop_length_second * 30)}')
 
         # 音声
@@ -498,6 +504,8 @@ class LiveEncodingTask:
         video_height = QUALITY[quality].height
         if video_width == 1440 and video_height == 1080 and is_fullhd_channel is True:
             video_width = 1920
+
+        ## アスペクト比は --dar 16:9 で指定済みなので、ここでは解像度だけを固定する
         options.append(f'--output-res {video_width}x{video_height}')
 
         # 音声

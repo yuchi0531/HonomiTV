@@ -51,7 +51,7 @@ class BS4KLiveEncodingTest(unittest.IsolatedAsyncioTestCase):
         task._retry_count = 0
         task.live_stream = Mock()
         options = task.buildFFmpegOptions('1080p', 'BS4K', True, True)
-        self.assertEqual(options[options.index('-vf') + 1], 'scale=1920:1080,format=yuv420p')
+        self.assertEqual(options[options.index('-vf') + 1], 'scale=1920:1080,setsar=1/1,format=yuv420p')
 
     async def test_bs_tuner_does_not_satisfy_bs4k_preflight(self) -> None:
         """BS 専用 PT3 が空いていても BS4K の空きチューナーとは報告しない。"""
