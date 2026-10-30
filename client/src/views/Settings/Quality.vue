@@ -113,15 +113,18 @@
                 </v-switch>
             </div>
             <div class="settings__item settings__item--sync-disabled">
-                <div class="settings__item-heading">BS4K のパススルー方式</div>
+                <div class="settings__item-heading">BS4K のパススルー方式 (初期値)</div>
                 <div class="settings__item-label">
-                    BS4K チャンネルの視聴方法を選びます。デフォルトは [TLV] です。<br>
+                    BS4K チャンネルを視聴したときに、最初に選ばれる画質を指定します。<br>
                 </div>
                 <label class="settings__item-label">
                     [TLV] は、放送波をそのまま受け取って再生します。通常の BS4K 環境ではこちらを使います。<br>
                 </label>
                 <label class="settings__item-label">
-                    サーバー側で dantto4k などを使って放送波を H.265 (HEVC) の MPEG-TS へ変換している場合は、[MPEG-TS (HEVC)] を選んでください。[TLV] のままだと再生できません。<br>
+                    サーバー側で dantto4k などを使って放送波を H.265 (HEVC) の MPEG-TS へ変換している場合は、[MPEG-TS (HEVC)] を選んでください。<br>
+                </label>
+                <label class="settings__item-label">
+                    視聴中は画質メニューから [TLV パススルー] と [Original (HEVC)] の両方を選べます。再生できない場合はもう一方に切り替えてください。<br>
                 </label>
                 <v-select class="settings__item-form" color="primary" variant="outlined" hide-details
                     :density="is_form_dense ? 'compact' : 'default'"

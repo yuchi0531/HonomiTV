@@ -430,6 +430,12 @@ class PlayerController {
             player_store.live_comment_init_failed_message = 'このチャンネルは実況コメントに対応していません。';
         }
 
+        // H.265 のパススルー可否
+        // 通常の HEVC はブラウザの対応が確認できたときだけ出す
+        // Main 10 は判定が環境依存で誤って非対応と出やすいため、常に選択肢に出して再生を試させる
+        // (実際に再生できなければ、ユーザーが HLS 画質へ切り替えられる)
+        const recording_hevc_playback_supported = is_hevc_playback === true;
+
         // 再エンコード済みの MPEG-TS 録画は、ブラウザが元コーデックを再生できる場合だけ FFmpeg stream copy を利用できる
         // 録画中・インターレース・映像構成切り替えありのファイルは、固定 HLS セグメントへ安全に分割できないため対象外にする
         const recorded_video = this.playback_mode === 'Video' ? player_store.recorded_program.recorded_video : null;
@@ -445,11 +451,7 @@ class PlayerController {
                 ) ||
                 (
                     recorded_video.video_codec === 'H.265' &&
-                    is_hevc_playback === true &&
-                    (
-                        recorded_video.video_codec_profile !== 'Main 10' ||
-                        is_hevc_10bit_playback === true
-                    )
+                    (recording_hevc_playback_supported === true || recorded_video.video_codec_profile === 'Main 10')
                 )
             );
 
@@ -707,21 +709,19 @@ class PlayerController {
                         // ただし dantto4k などで MPEG-TS へ変換した構成ではストリームが TLV ではないため、
                         // TLV パススルーを出すと再生できない。設定が TLV のときだけ追加する
                         if (is_bs4k_channel === true) {
-                            // 設定が TLV のときだけ Raw MMTS 直通を出す
-                            if (this.bs4k_live_passthrough_mode === 'TLV') {
-                                qualities.push({
-                                    name: PlayerController.PASSTHROUGH_PRIMARY_QUALITY_NAME,
-                                    type: 'tlv',
-                                    url: `${streaming_api_base_url}/raw-mmts/mpegts`,
-                                });
-                            } else {
-                                // dantto4k などで MPEG-TS (HEVC) へ変換された構成では、
-                                // 再エンコードせずにそのまま再生できる画質を出す
-                                qualities.push(buildLiveOriginalHEVCQuality(
-                                    Utils.api_base_url,
-                                    channels_store.channel.current.display_channel_id,
-                                ));
-                            }
+                            // TLV と MPEG-TS の両方を出し、視聴中に切り替えられるようにする
+                            // 設定は初期選択の既定値として使い、実際に届くストリーム形式に合う方をユーザーが選べる
+                            // 構成によっては Mirakurun が decode=0 でも MPEG-TS を返すため、
+                            // 一方だけを出すと選べないときに再生できなくなる
+                            qualities.push({
+                                name: PlayerController.PASSTHROUGH_PRIMARY_QUALITY_NAME,
+                                type: 'tlv',
+                                url: `${streaming_api_base_url}/raw-mmts/mpegts`,
+                            });
+                            qualities.push(buildLiveOriginalHEVCQuality(
+                                Utils.api_base_url,
+                                channels_store.channel.current.display_channel_id,
+                            ));
                         } else {
                             // 地上波・BS/CS の MPEG-2 TS は mpeg2toh264 へ原始ストリーム URL を直接渡す
                             qualities.push(buildLiveOriginalMPEG2Quality(
