@@ -146,6 +146,15 @@ export interface IServerSettings {
     video: {
         recorded_folders: string[];
         exclude_scan_paths: string[];
+        // CM 解析 (MMT/TLV) を有効にするか
+        // サーバー側の既定値で上書きされないよう、型に含めてそのまま送り返す
+        enable_mmt_tlv_cm_analysis: boolean;
+        // CM 検出方式 (JoinLogoScp / OpenCV / Fallback)
+        cm_detect_mode: 'JoinLogoScp' | 'OpenCV' | 'Fallback';
+        // チャンネル選択方式
+        channel_selection_mode: 'auto' | 'prefer_main' | 'first_found' | 'filename_based';
+        // ファイル名からチャンネルを判定するか
+        enable_filename_based_channel_selection: boolean;
     };
     capture: {
         upload_folders: string[];
@@ -200,6 +209,11 @@ export const IServerSettingsDefault: IServerSettings = {
     video: {
         recorded_folders: [],
         exclude_scan_paths: [],
+        // サーバー側の既定値と揃える
+        enable_mmt_tlv_cm_analysis: false,
+        cm_detect_mode: 'Fallback',
+        channel_selection_mode: 'auto',
+        enable_filename_based_channel_selection: true,
     },
     capture: {
         upload_folders: [],

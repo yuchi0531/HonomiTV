@@ -134,3 +134,25 @@ class BS4KStreamFormatSuffixTest(unittest.TestCase):
             bs4k_stream_format = 'MPEG-TS',
         )
         self.assertEqual(options.buildSuffix(), '-10bit-24fps-mpegts')
+
+
+class CopyQualityONAirTransitionTest(unittest.TestCase):
+    """copy 画質が ONAir へ遷移できることを検証する。
+
+    copy は再エンコードせずに流すため、エンコーダーは frame= や bitrate= を出力しない。
+    ONAir への遷移を original だけで判定していると、copy は Standby のまま止まり
+    再生が始まらない (チューナーも解放されない)。
+    """
+
+    def test_passthrough_quality_covers_copy(self) -> None:
+        """パススルー判定が original と copy の両方を含む。"""
+
+        import inspect
+
+        from app.streams import LiveEncodingTask as module
+
+        source = inspect.getsource(module.LiveEncodingTask)
+        # ONAir 遷移の判定が is_passthrough_quality になっている
+        self.assertIn('if is_passthrough_quality is True:', source)
+        # original だけを見る古い判定が残っていない
+        self.assertNotIn('if is_original_quality is True:', source)

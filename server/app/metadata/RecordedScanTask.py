@@ -1939,16 +1939,6 @@ class RecordedScanTask:
                         logging.info(f'{file_path}: Skipping MMT/TLV CM analysis because it is disabled.')
             logging.info(f'{file_path}: Background analysis task completed.')
 
-            # バックグラウンド解析完了後に通知を送信（サムネイル生成完了後）
-            if should_notify:
-                try:
-                    await self._sendNewFileNotification(
-                        recorded_program,
-                        event_type = notify_event_type or 'FileDetected',
-                    )
-                except Exception as notification_ex:
-                    logging.warning(f'通知送信に失敗しました: {notification_ex}')
-
         except Exception as ex:
             logging.error(f'{file_path}: Error in background analysis task:', exc_info=ex)
         finally:

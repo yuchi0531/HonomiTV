@@ -1420,9 +1420,11 @@ class LiveEncodingTask:
                                 self.live_stream.writeStreamData(bytes(chunk_buffer))
                                 # print(f'Writer:    Chunk size: {chunk_size:05} / Time: {time.time()}')
 
-                                # オリジナル画質 ("original") 指定時のみ、エンコーダーログがないため、
+                                # パススルー画質 ("original" / "copy") ではエンコーダーログがないため、
                                 # ライブストリームへ書き込んだ TS データ量からバッファリング完了を判定する
-                                if is_original_quality is True:
+                                ## copy は再エンコードせずに流すため、エンコーダーは frame= や bitrate= を出力しない
+                                ## ここで original だけを見ていると copy が Standby のまま ONAir にならず、再生が始まらない
+                                if is_passthrough_quality is True:
                                     live_stream_status = self.live_stream.getStatus()
                                     if live_stream_status.status == 'Standby':
                                         original_quality_bytes_written += chunk_size
@@ -1471,9 +1473,9 @@ class LiveEncodingTask:
                             self.live_stream.writeStreamData(bytes(chunk_buffer))
                             # print(f'SubWriter: Chunk size: {len(chunk_buffer):05} / Time: {time.time()}')
 
-                            # オリジナル画質 ("original") 指定時のみ、エンコーダーログがないため、
+                            # パススルー画質 ("original" / "copy") ではエンコーダーログがないため、
                             # ライブストリームへ書き込んだ TS データ量からバッファリング完了を判定する
-                            if is_original_quality is True:
+                            if is_passthrough_quality is True:
                                 live_stream_status = self.live_stream.getStatus()
                                 if live_stream_status.status == 'Standby':
                                     original_quality_bytes_written += chunk_size

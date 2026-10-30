@@ -71,11 +71,6 @@ export class PlayerUtils {
 
 
     /**
-     * DPlayer のインスタンスから録画番組ストリーミング API で設定できる画質を取得する
-     * @param player DPlayer のインスタンス
-     * @returns API で設定できる画質 (取得できなかった場合は基本復旧不能だが、一応 "1080p" を返す)
-     */
-    /**
      * DPlayer のインスタンスから BS4K の入力ストリーム形式を取得する
      * @param player DPlayer のインスタンス
      * @returns 入力ストリーム形式 (取得できなかった場合は TLV)
@@ -89,6 +84,11 @@ export class PlayerUtils {
     }
 
 
+    /**
+     * DPlayer のインスタンスから録画番組ストリーミング API で設定できる画質を取得する
+     * @param player DPlayer のインスタンス
+     * @returns API で設定できる画質 (取得できなかった場合は基本復旧不能だが、一応 "1080p" を返す)
+     */
     static extractVideoAPIQualityFromDPlayer(player: DPlayer): VideoAPIVideoQuality {
         if (player.quality === null) {
             return '1080p';
