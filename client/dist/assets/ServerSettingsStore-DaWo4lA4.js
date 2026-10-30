@@ -1,5 +1,0 @@
-<<<<<<<< HEAD:client/dist/assets/ServerSettingsStore-wFj3hO3n.js
-import{aP as u,a8 as l,bb as i,aM as f}from"./index-DYXJkYbV.js";const v=u("serverSettings",()=>{const t=l(structuredClone(i)),r=l(!1),n=l(!1);let e=null;async function s(){return r.value?t.value:e!==null?await e:(n.value=!0,e=f.fetchServerSettings().then(a=>(a!==null&&(t.value=a,r.value=!0),a)).finally(()=>{n.value=!1,e=null}),await e)}return{server_settings:t,is_loaded:r,is_loading:n,fetchServerSettingsOnce:s}});export{v as u};
-========
-import{aP as u,a8 as l,bb as i,aM as f}from"./index-DjVPih8R.js";const v=u("serverSettings",()=>{const t=l(structuredClone(i)),r=l(!1),n=l(!1);let e=null;async function s(){return r.value?t.value:e!==null?await e:(n.value=!0,e=f.fetchServerSettings().then(a=>(a!==null&&(t.value=a,r.value=!0),a)).finally(()=>{n.value=!1,e=null}),await e)}return{server_settings:t,is_loaded:r,is_loading:n,fetchServerSettingsOnce:s}});export{v as u};
->>>>>>>> 9cc7b6fd (fix: Restore the fork's capture fixes and clean up the scan lifecycle):client/dist/assets/ServerSettingsStore-C5eWvVn6.js
