@@ -573,11 +573,18 @@ class PlayerController {
             if (font === 'sans-serif') {
                 return 'sans-serif';
             }
+            // 游ゴシックのみ、Windows と Mac で名前が異なるため複数の候補を並べる
+            // ここで返す値は引用符を含まない形にし、下の組み立てで個別に囲む
             if (font === 'Yu Gothic') {
-                // 游ゴシックのみ、Windows と Mac で名前が異なる
-                font = 'Yu Gothic Medium","Yu Gothic","YuGothic';
+                font = 'Yu Gothic Medium|Yu Gothic|YuGothic';
             }
-            return `"${font}", "Rounded M+ 1m for ARIB", sans-serif`;
+            // 任意のフォント名を入力できるため、CSS の文字列を壊す文字を除去する
+            // 引用符やバックスラッシュが入ると、font-family の指定全体が無効になる
+            const families = font.split('|')
+                .map((family) => family.replace(/["\\]/g, '').trim())
+                .filter((family) => family !== '')
+                .map((family) => `"${family}"`);
+            return `${families.join(', ')}, "Rounded M+ 1m for ARIB", sans-serif`;
         })();
         const caption_background_color = (() => {
             if (settings_store.settings.specify_caption_opacity === true) {

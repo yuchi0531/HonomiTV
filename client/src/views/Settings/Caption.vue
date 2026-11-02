@@ -16,8 +16,17 @@
                 </label>
                 <v-select class="settings__item-form" color="primary" variant="outlined" hide-details
                     :density="is_form_dense ? 'compact' : 'default'"
-                    :items="caption_font" v-model="settingsStore.settings.caption_font">
+                    :items="caption_font_options" v-model="caption_font_selection">
                 </v-select>
+                <!-- 一覧にないフォントを、OS に入っているフォント名で直接指定できるようにする -->
+                <v-text-field class="settings__item-form mt-2" color="primary" variant="outlined" hide-details
+                    :density="is_form_dense ? 'compact' : 'default'"
+                    :disabled="caption_font_selection !== CUSTOM_FONT_VALUE"
+                    placeholder="例: 源ノ角ゴシック JP"
+                    hint="OS にインストールされているフォント名を入力します。ブラウザがそのフォントを使えない場合は、既定のフォントで表示されます。"
+                    persistent-hint
+                    v-model="settingsStore.settings.caption_font">
+                </v-text-field>
             </div>
             <div class="settings__item settings__item--switch">
                 <label class="settings__item-heading" for="always_border_caption_text">字幕の文字を常に縁取りする</label>
@@ -93,6 +102,10 @@ export default defineComponent({
             // フォームを小さくするかどうか
             is_form_dense: Utils.isSmartphoneHorizontal(),
 
+            // 任意のフォント名を入力する選択肢の値
+            // 一覧にないフォントを使いたい場合に選ぶ
+            CUSTOM_FONT_VALUE: '__custom__',
+
             // 字幕のフォントの選択肢
             caption_font: [
                 {title: 'Windows TV ゴシック', value: 'Windows TV Gothic'},
@@ -110,6 +123,40 @@ export default defineComponent({
     },
     computed: {
         ...mapStores(useSettingsStore),
+
+        /**
+         * フォントの選択肢 (一覧に任意入力を加えたもの)
+         * @returns 選択肢の配列
+         */
+        caption_font_options(): Array<{title: string, value: string}> {
+            return [
+                ...this.caption_font,
+                {title: '任意のフォント名を入力', value: this.CUSTOM_FONT_VALUE},
+            ];
+        },
+
+        /**
+         * フォントの選択状態
+         * 一覧にあるフォントならその値、ない場合は任意入力の選択肢を選んだ状態にする
+         */
+        caption_font_selection: {
+            get(): string {
+                const current = this.settingsStore.settings.caption_font;
+                // 一覧にあるフォントはそのまま選択状態にする
+                if (this.caption_font.some((option) => option.value === current) === true) {
+                    return current;
+                }
+                // 一覧にないフォント名が保存されている場合は、任意入力として扱う
+                return this.CUSTOM_FONT_VALUE;
+            },
+            set(value: string): void {
+                // 任意入力を選んだときは、現在の入力内容をそのまま残す
+                if (value === this.CUSTOM_FONT_VALUE) {
+                    return;
+                }
+                this.settingsStore.settings.caption_font = value;
+            },
+        },
     }
 });
 

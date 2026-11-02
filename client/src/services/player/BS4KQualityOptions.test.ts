@@ -18,13 +18,13 @@ describe('BS4K のパススルー画質', () => {
         expect(source).toContain('PlayerController.PASSTHROUGH_PRIMARY_QUALITY_NAME');
         expect(source).toContain('buildLiveOriginalHEVCQuality');
         // 設定値で分岐して片方だけを出す書き方が残っていない
-        expect(source).not.toContain("if (this.bs4k_live_passthrough_mode === 'TLV') {\n                                qualities.push");
+        expect(source).not.toContain('if (this.bs4k_live_passthrough_mode === \'TLV\') {\n                                qualities.push');
     });
 
     it('Main 10 の録画でもパススルーを選択肢に出す', () => {
         // Main 10 の再生可否は環境依存で誤判定しやすいため、
         // 常に選択肢に出して再生を試させる
-        const main10Condition = source.includes("recorded_video.video_codec_profile === 'Main 10'");
+        const main10Condition = source.includes('recorded_video.video_codec_profile === \'Main 10\'');
         expect(main10Condition).toBe(true);
     });
 });
