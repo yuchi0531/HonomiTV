@@ -300,6 +300,12 @@ class MetadataAnalyzer:
                 logging.warning(f'{self.recorded_file_path}: MMT/TLV metadata analysis failed:', exc_info=ex)
                 return None
 
+        # FFprobe の解析中にもファイルは書き込みが進みうる。
+        ## 解析前に stat を控えておき、後段で「解析前後でサイズ/更新時刻が変わったか」を判定できるようにする。
+        ## 書き込み中のファイルを解析した場合は、解析前の値と duration が対応するため、
+        ## 呼び出し元 (RecordedScanTask) が完了後に正しく再解析できる。
+        pre_stat = self.recorded_file_path.stat()
+
         # MMT/TLV 以外は FFprobe から録画ファイルのメディア情報を取得する。
         ## 取得に失敗した場合は KonomiTV で再生可能なファイルではないと判断し、None を返す。
         result = self.__analyzeFFprobe()
@@ -526,8 +532,12 @@ class MetadataAnalyzer:
             return None
 
         # 録画ファイル情報を表すモデルを作成
+        ## file_size / file_modified_at は解析「前」の値を使う。
+        ## 解析後にとると、書き込み中のファイルでは duration (解析開始時点) と
+        ## サイズ/更新時刻 (解析終了時点) が食い違い、以後
+        ## 「サイズも更新時刻も前回と同じ」と誤判定されて再解析されなくなる。
         now = datetime.now(tz=JST)
-        stat_info = self.recorded_file_path.stat()
+        stat_info = pre_stat
         recorded_video = schemas.RecordedVideo(
             status = 'Recorded',  # この時点では録画済みとしておく
             file_path = str(self.recorded_file_path),
