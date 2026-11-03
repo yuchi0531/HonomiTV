@@ -77,3 +77,36 @@ describe('字幕の font-family 組み立て', () => {
         expect(buildFontFamily('sans-serif')).toBe('sans-serif');
     });
 });
+
+
+describe('任意入力の選択状態', () => {
+
+    /**
+     * 選択状態を求める (コンポーネントと同じロジック)
+     * @param current 保存されているフォント名
+     * @param is_custom_selected 任意入力へ切り替えているか
+     * @returns 選択肢の値
+     */
+    const selectionOf = (current: string, is_custom_selected: boolean): string => {
+        if (is_custom_selected === true) {
+            return CUSTOM_FONT_VALUE;
+        }
+        return preset_fonts.includes(current) === true ? current : CUSTOM_FONT_VALUE;
+    };
+
+    /** 任意入力の選択肢の値 */
+    const CUSTOM_FONT_VALUE = '__custom__';
+
+    /** 一覧にあるフォント */
+    const preset_fonts = ['Windows TV MaruGothic', 'Noto Sans JP', 'sans-serif'];
+
+    it('一覧のフォントを選んでいても、任意入力へ切り替えられる', () => {
+        // 一覧のフォントが保存されていても、任意入力の選択肢を選んだら入力欄を有効にする
+        expect(selectionOf('Noto Sans JP', false)).toBe('Noto Sans JP');
+        expect(selectionOf('Noto Sans JP', true)).toBe(CUSTOM_FONT_VALUE);
+    });
+
+    it('一覧にないフォントが保存されていれば任意入力の状態になる', () => {
+        expect(selectionOf('源ノ角ゴシック JP', false)).toBe(CUSTOM_FONT_VALUE);
+    });
+});

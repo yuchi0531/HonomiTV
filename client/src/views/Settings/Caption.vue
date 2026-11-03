@@ -106,6 +106,10 @@ export default defineComponent({
             // 一覧にないフォントを使いたい場合に選ぶ
             CUSTOM_FONT_VALUE: '__custom__',
 
+            // 任意入力の選択肢を選んでいるか
+            // 保存値が一覧にあるフォントでも、任意入力へ切り替えている間は入力欄を有効にする
+            is_custom_font_selected: false,
+
             // 字幕のフォントの選択肢
             caption_font: [
                 {title: 'Windows TV ゴシック', value: 'Windows TV Gothic'},
@@ -120,6 +124,11 @@ export default defineComponent({
                 {title: 'デフォルトのフォント', value: 'sans-serif'},
             ],
         };
+    },
+    mounted() {
+        // 保存値が一覧にないフォントなら、最初から任意入力の状態にする
+        const current = this.settingsStore.settings.caption_font;
+        this.is_custom_font_selected = this.caption_font.some((option) => option.value === current) === false;
     },
     computed: {
         ...mapStores(useSettingsStore),
@@ -141,6 +150,10 @@ export default defineComponent({
          */
         caption_font_selection: {
             get(): string {
+                // 任意入力を選んでいる間は、保存値が一覧にあっても任意入力として表示する
+                if (this.is_custom_font_selected === true) {
+                    return this.CUSTOM_FONT_VALUE;
+                }
                 const current = this.settingsStore.settings.caption_font;
                 // 一覧にあるフォントはそのまま選択状態にする
                 if (this.caption_font.some((option) => option.value === current) === true) {
@@ -150,10 +163,13 @@ export default defineComponent({
                 return this.CUSTOM_FONT_VALUE;
             },
             set(value: string): void {
-                // 任意入力を選んだときは、現在の入力内容をそのまま残す
+                // 任意入力へ切り替えたときは、保存値はそのままにして入力欄を有効にする
                 if (value === this.CUSTOM_FONT_VALUE) {
+                    this.is_custom_font_selected = true;
                     return;
                 }
+                // 一覧のフォントを選んだら任意入力の状態を解除する
+                this.is_custom_font_selected = false;
                 this.settingsStore.settings.caption_font = value;
             },
         },
