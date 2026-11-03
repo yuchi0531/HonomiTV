@@ -16,7 +16,9 @@
                             <span class="series-home-container__count">{{is_loading ? '取得中…' : `${total_series}件`}}</span>
                         </h2>
                         <div class="series-home-container__actions">
-                            <v-btn to="/series/on-air" variant="tonal" color="primary"
+                            <!-- 放送中はシリーズの中の位置づけなので、PC ではパンくずとこの一覧から辿る -->
+                            <!-- スマートフォンでは戻る導線が弱いため、明示的な入口を残す -->
+                            <v-btn v-if="Utils.isSmartphoneVertical()" to="/series/on-air" variant="tonal" color="primary"
                                 prepend-icon="mdi-calendar-week">
                                 放送中
                             </v-btn>
